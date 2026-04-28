@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GW Spin Posterior</title>
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'],['\\(','\\)']], displayMath: [['$$','$$'],['\\[','\\]']] },
+  svg: { fontCache: 'none' },
+  startup: {
+    ready() {
+      MathJax.startup.defaultReady();
+      mathReady = true;
+      if (S && !updateScheduled) { updateScheduled = true; requestAnimationFrame(function(){ updateScheduled=false; update(); }); }
+    }
+  }
+};
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#111;color:#ddd;font-family:monospace;font-size:12px;padding:8px;max-width:1500px;margin:0 auto;-webkit-text-size-adjust:100%;}
+h2{font-size:13px;color:#fc6;margin-bottom:5px;}
+#desc-panel{margin-bottom:6px;background:#161616;border:1px solid #2a2a2a;border-radius:4px;}
+#desc-panel summary{padding:7px 10px;cursor:pointer;color:#bbb;font-family:sans-serif;font-size:12px;list-style:none;}
+#desc-panel summary::-webkit-details-marker{display:none;}
+#desc-panel summary::after{content:'show';float:right;color:#888;font-family:monospace;font-size:10px;}
+#desc-panel[open] summary::after{content:'hide';}
+#desc{color:#bbb;font-family:sans-serif;font-size:12px;line-height:1.5;padding:0 10px 8px 10px;}
+#workspace{display:grid;grid-template-columns:minmax(320px,410px) minmax(0,1fr);gap:8px;align-items:start;}
+#sidebar{display:flex;flex-direction:column;gap:8px;min-width:0;}
+#ctrl{display:grid;grid-template-columns:1fr;gap:5px;}
+.box{background:#1e1e1e;border:1px solid #333;border-radius:4px;padding:6px;}
+.bt{color:#6cf;font-weight:bold;font-size:11px;margin-bottom:3px;}
+.row{display:flex;align-items:center;gap:5px;margin-bottom:2px;}
+.row label{min-width:58px;color:#aaa;font-size:10px;line-height:1.35;}
+.tab-btn{background:#1a2535;color:#88aacc;border:1px solid #2a4060;padding:2px 7px;border-radius:3px;cursor:pointer;font-size:10px;font-family:monospace;-webkit-appearance:none;}
+.tab-btn.active{background:#1a3528;border-color:#3a7a55;color:#8fcca0;}
+.hint{color:#666;font-size:9px;margin:1px 0 4px 0;font-style:italic;}
+.row input[type=range]{flex:1;height:16px;}
+.row .val{width:40px;text-align:right;color:#ff9;font-size:10px;}
+#info{color:#9d9;font-size:10px;margin-bottom:3px;line-height:1.45;}
+.btns{display:flex;gap:5px;flex-wrap:wrap;}
+button{background:#2a3a4a;color:#adf;border:1px solid #4a6a8a;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-family:monospace;-webkit-appearance:none;}
+button.active{background:#1a4a2a;border-color:#4a9a6a;color:#afc;}
+#main-content{min-width:0;}
+#balls{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.ball-wrap{flex:1 1 0;min-width:0;display:flex;flex-direction:column;}
+canvas.ballcv{width:100%;height:auto;background:#0a0a0a;border:1px solid #333;border-radius:4px;cursor:grab;display:block;touch-action:none;}
+.clabel{color:#777;font-size:10px;text-align:center;margin-top:3px;}
+#corner-wrap{min-width:0;display:flex;justify-content:center;align-items:flex-start;padding:6px;background:#111;border:1px solid #2a2a2a;border-radius:4px;}
+#cornercv{display:block;background:#0a0a0a;border:1px solid #333;border-radius:4px;max-width:100%;height:auto;}
+#sphere-panel{background:#1b1b1b;border:1px solid #333;border-radius:4px;padding:6px;}
+#sphere-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+#sphere-title{color:#6cf;font-weight:bold;font-size:11px;}
+#sphere-tools{display:flex;gap:5px;flex-wrap:wrap;}
+#sphere-body{padding:0;}
+#sphere-panel #balls{gap:6px;}
+#sphere-panel .clabel{font-size:9px;line-height:1.25;margin-top:2px;}
+@media(max-width:1100px){
+  #workspace{grid-template-columns:1fr;}
+  #ctrl{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:700px){
+  body{padding:6px;}
+  #ctrl{grid-template-columns:1fr;}
+  #balls{grid-template-columns:1fr;}
+  #sphere-head{align-items:flex-start;flex-direction:column;}
+}
+</style>
+</head>
+<body>
+
+<h2>GW Spin Posterior Shape</h2>
+
+<details id="desc-panel" open>
+  <summary>Model / likelihood</summary>
+  <div id="desc">
+  We only ever really measure the first two effective spin parameters $(\chi_\mathrm{eff}, \chi_p)$ — if at all. Our parameter estimation pipelines use a sampling prior flat in the component spins $(\chi_1, \chi_2, \cos\theta_1, \cos\theta_2)$. If I inject something where I know even the component spins exactly, my measurement garbles that up into something weird. Here's a toy model to understand that garbling.
+  <br><br>
+  For every $\chi_\mathrm{eff}, \chi_p, q$ that you specify, we do PE over the component spins using this crude approximate likelihood:
+  $$\log \mathcal{L} = -\frac{\rho^2}{2}\!\left[ w_\mathrm{eff}^2\,\Delta\chi_\mathrm{eff}^2 + w_p^2\,\Delta\chi_p^2 + w_q^2\,\Delta q^2 + 2\rho_{eq}\,w_\mathrm{eff}\,w_q\,\Delta\chi_\mathrm{eff}\,\Delta q \right]$$
+  This is Gaussians in the effective-parameter space, mapped back through the prior on component spins.
+</div>
+</details>
+
+<div id="workspace">
+<div id="sidebar">
+  <div id="ctrl">
+    <div class="box">
+      <div class="bt" style="display:flex;align-items:center;gap:5px;">True signal
+        <button class="tab-btn active" id="tab-eff" onclick="setTrueMode('eff')">effective</button>
+        <button class="tab-btn" id="tab-comp" onclick="setTrueMode('comp')">component</button>
+      </div>
+      <div id="panel-eff">
+        <div class="row"><label>$\chi_\mathrm{eff}$</label><input type="range" id="t_ceff" min="-0.99" max="0.99" step="0.01" value="0.0"><span class="val" id="v_tceff">0.00</span></div>
+        <div class="row"><label>$\chi_p$</label><input type="range" id="t_cp" min="0" max="0.99" step="0.01" value="0.2"><span class="val" id="v_tcp">0.20</span></div>
+        <div class="row"><label>$q$</label><input type="range" id="t_q" min="0.1" max="1" step="0.01" value="0.8"><span class="val" id="v_tq">0.80</span></div>
+      </div>
+      <div id="panel-comp" style="display:none">
+        <div class="row"><label>$\chi_1$</label><input type="range" id="t_c1" min="0" max="0.99" step="0.01" value="0.5"><span class="val" id="v_tc1">0.50</span></div>
+        <div class="row"><label>$\chi_2$</label><input type="range" id="t_c2" min="0" max="0.99" step="0.01" value="0.5"><span class="val" id="v_tc2">0.50</span></div>
+        <div class="row"><label>$\cos\theta_1$</label><input type="range" id="t_z1" min="-1" max="1" step="0.01" value="0.0"><span class="val" id="v_tz1">0.00</span></div>
+        <div class="row"><label>$\cos\theta_2$</label><input type="range" id="t_z2" min="-1" max="1" step="0.01" value="0.0"><span class="val" id="v_tz2">0.00</span></div>
+        <div class="row"><label>$q$</label><input type="range" id="t_q2" min="0.1" max="1" step="0.01" value="0.8"><span class="val" id="v_tq2">0.80</span></div>
+      </div>
+    </div>
+    <div class="box">
+      <div class="bt" style="display:flex;align-items:center;gap:5px;">Detector / SNR
+        <button class="tab-btn active" id="tab-w-manual" onclick="setWeightMode('manual')">weights</button>
+        <button class="tab-btn" id="tab-w-orient" onclick="setWeightMode('orient')">orientation</button>
+      </div>
+      <div class="row"><label>SNR $\rho$</label><input type="range" id="snr" min="8" max="100" step="1" value="15"><span class="val" id="v_snr">15</span></div>
+      <div id="panel-w-manual">
+        <div class="hint">lower $w$ → detector measures this poorly</div>
+        <div class="row"><label>$w_\mathrm{eff}$</label><input type="range" id="w_eff" min="0.1" max="5" step="0.05" value="1.0"><span class="val" id="v_weff">1.00</span></div>
+        <div class="row"><label>$w_p$</label><input type="range" id="w_p" min="0.05" max="2" step="0.05" value="0.3"><span class="val" id="v_wp">0.30</span></div>
+        <div class="row"><label>$w_q$</label><input type="range" id="w_q" min="0.05" max="2" step="0.05" value="0.5"><span class="val" id="v_wq">0.50</span></div>
+      </div>
+      <div id="panel-w-orient" style="display:none">
+        <div class="hint">proxy weights inferred from $(\iota,\alpha,\delta)$</div>
+        <div class="row"><label>$\iota$</label><input type="range" id="iota" min="0" max="3.14" step="0.01" value="1.57"><span class="val" id="v_iota">1.57</span></div>
+        <div class="row"><label>$\alpha$</label><input type="range" id="alpha" min="0" max="6.28" step="0.01" value="0.00"><span class="val" id="v_alpha">0.00</span></div>
+        <div class="row"><label>$\delta$</label><input type="range" id="delta" min="-1.57" max="1.57" step="0.01" value="0.00"><span class="val" id="v_delta">0.00</span></div>
+        <div id="w_orient_info" class="hint" style="font-style:normal;color:#9d9;margin-top:4px;">w_eff=1.00, w_p=0.00, w_q=0.70</div>
+      </div>
+    </div>
+    <div class="box">
+      <div class="bt">Sampling</div>
+      <div class="row"><label>$N$ (k)</label><input type="range" id="Nk" min="20" max="400" step="10" value="100"><span class="val" id="v_Nk">100</span></div>
+      <div class="row"><label>pts shown</label><input type="range" id="Nshow" min="200" max="4000" step="100" value="4000"><span class="val" id="v_Ns">4000</span></div>
+      <div class="row"><label>$q$ prior $\beta$</label><input type="range" id="beta_q" min="-2" max="4" step="0.5" value="0"><span class="val" id="v_bq">0.0</span></div>
+    </div>
+    <div class="box">
+      <div class="bt">Controls</div>
+      <div id="info">Loading...</div>
+      <div class="btns" style="margin-top:5px;">
+        <button onclick="redraw()">Resample</button>
+        <button onclick="preset(0,0.2,0.8,15)">low spin</button>
+        <button onclick="preset(0.3,0.15,0.8,20)">aligned</button>
+        <button onclick="preset(-0.15,0.3,0.6,12)">anti</button>
+        <button onclick="preset(0.6,0.5,0.9,30)">high</button>
+      </div>
+    </div>
+  </div>
+  <div id="sphere-panel">
+    <div id="sphere-head">
+      <div id="sphere-title">Spin sphere views</div>
+      <div id="sphere-tools">
+        <button onclick="resetView()">reset view</button>
+        <button onclick="toggleAxes()">axes</button>
+      </div>
+    </div>
+    <div id="sphere-body">
+      <div id="balls">
+        <div class="ball-wrap">
+          <canvas id="cv1" class="ballcv"></canvas>
+          <div class="clabel">$\mathbf{S}_1 = \chi_1(\sin\theta_1\cos\phi_1,\;\sin\theta_1\sin\phi_1,\;\cos\theta_1)$</div>
+        </div>
+        <div class="ball-wrap">
+          <canvas id="cv2" class="ballcv"></canvas>
+          <div class="clabel">$\mathbf{S}_2 = \chi_2(\sin\theta_2\cos\phi_2,\;\sin\theta_2\sin\phi_2,\;\cos\theta_2)$</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="main-content">
+  <div id="corner-wrap">
+    <canvas id="cornercv"></canvas>
+  </div>
+</div>
+</div>
+
+<script>
+var S=null, weights=null, showAxes=true;
+var trueMode='eff';
+var weightMode='manual';
+var DEFAULT_RX=0.42, DEFAULT_RY=0.0;
+var mathReady=false, mathImgCache={}, updateScheduled=false;
+var DPR=Math.max(1,window.devicePixelRatio||1);
+
+function setupCanvasSize(cv, cssW, cssH){
+  cv.style.width=cssW+'px';
+  cv.style.height=cssH+'px';
+  cv.width=Math.round(cssW*DPR);
+  cv.height=Math.round(cssH*DPR);
+}
+
+function getMathImg(tex, hpx, color) {
+  if (!mathReady || !window.MathJax || !MathJax.tex2svg) return null;
+  color = color||'#cccccc';
+  var key = tex+'|'+hpx+'|'+color;
+  if (mathImgCache[key]) return mathImgCache[key];
+  try {
+    var wrapper = MathJax.tex2svg(tex, {display:false});
+    var svg = wrapper.querySelector('svg');
+    if (!svg) return null;
+    var vb = svg.viewBox ? svg.viewBox.baseVal : null;
+    var aspect = (vb && vb.height>0) ? vb.width/vb.height : 3;
+    var wpx = Math.max(1, Math.round(hpx*aspect));
+    svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    svg.setAttribute('width', wpx+'px');
+    svg.setAttribute('height', hpx+'px');
+    var s = new XMLSerializer().serializeToString(svg);
+    s = s.replace(/currentColor/g, color);
+    var img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s);
+    var entry = {img:img, w:wpx, h:hpx, ready:false};
+    img.onload = function() {
+      entry.ready = true;
+      if (S && !updateScheduled) { updateScheduled=true; requestAnimationFrame(function(){ updateScheduled=false; update(); }); }
+    };
+    mathImgCache[key] = entry;
+    return entry;
+  } catch(e) { return null; }
+}
+
+function drawMath(ctx, tex, cx, cy, hpx, rotate, color) {
+  var m = getMathImg(tex, hpx, color);
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (rotate) ctx.rotate(rotate);
+  if (!m || !m.ready) {
+    ctx.font = hpx+'px monospace';
+    ctx.fillStyle='#aaa';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.fillText(tex.replace(/[\\{}_]/g,'').replace(/mathrm|rm/g,''), 0, 0);
+  } else {
+    ctx.drawImage(m.img, -m.w/2, -m.h/2, m.w, m.h);
+  }
+  ctx.restore();
+}
+var view=[
+  {rotX:DEFAULT_RX,rotY:DEFAULT_RY,dragging:false,lx:0,ly:0},
+  {rotX:DEFAULT_RX,rotY:DEFAULT_RY,dragging:false,lx:0,ly:0}
+];
+
+function drawSamples(N){
+  var c1=new Float64Array(N),c2=new Float64Array(N);
+  var z1=new Float64Array(N),z2=new Float64Array(N);
+  var p1=new Float64Array(N),p2=new Float64Array(N);
+  var q=new Float64Array(N);
+  for(var i=0;i<N;i++){
+    c1[i]=Math.random();c2[i]=Math.random();
+    z1[i]=2*Math.random()-1;z2[i]=2*Math.random()-1;
+    p1[i]=2*Math.PI*Math.random();p2[i]=2*Math.PI*Math.random();
+    q[i]=0.1+0.9*Math.random();
+  }
+  return{c1,c2,z1,z2,p1,p2,q,N};
+}
+
+function computeWeights(S,snr,t_ceff,t_cp,t_q,w_eff,w_p,w_q,beta_q){
+  var N=S.N,w=new Float64Array(N);
+  var rho_eq=0.4,snr2=snr*snr;
+  var lmax=-Infinity;
+  for(var i=0;i<N;i++){
+    var c1=S.c1[i],c2=S.c2[i],z1=S.z1[i],z2=S.z2[i],q=S.q[i];
+    var fac=(4*q+3)/(4+3*q)*q;
+    var ce=(c1*z1+q*c2*z2)/(1+q);
+    var s1=Math.sqrt(Math.max(0,1-z1*z1));
+    var s2=Math.sqrt(Math.max(0,1-z2*z2));
+    var cp=Math.max(c1*s1,fac*c2*s2);
+    var dce=ce-t_ceff,dcp=cp-t_cp,dq=q-t_q;
+    var lw=-0.5*snr2*(w_eff*w_eff*dce*dce+w_p*w_p*dcp*dcp+w_q*w_q*dq*dq+2*rho_eq*w_eff*w_q*dce*dq);
+    lw+=beta_q*Math.log(q);
+    w[i]=lw;if(lw>lmax)lmax=lw;
+  }
+  var sum=0,sum2=0;
+  for(var i=0;i<N;i++){w[i]=Math.exp(w[i]-lmax);sum+=w[i];sum2+=w[i]*w[i];}
+  var Neff=sum*sum/sum2;
+  var me=0,mp2=0,mq=0;
+  for(var i=0;i<N;i++){
+    var c1=S.c1[i],c2=S.c2[i],z1=S.z1[i],z2=S.z2[i],q=S.q[i];
+    var fac=(4*q+3)/(4+3*q)*q;
+    var ce=(c1*z1+q*c2*z2)/(1+q);
+    var s1=Math.sqrt(Math.max(0,1-z1*z1));
+    var s2=Math.sqrt(Math.max(0,1-z2*z2));
+    var cp=Math.max(c1*s1,fac*c2*s2);
+    me+=w[i]*ce;mp2+=w[i]*cp;mq+=w[i]*q;
+  }
+  me/=sum;mp2/=sum;mq/=sum;
+  var ve=0,vp=0,vq=0;
+  for(var i=0;i<N;i++){
+    var c1=S.c1[i],c2=S.c2[i],z1=S.z1[i],z2=S.z2[i],q=S.q[i];
+    var fac=(4*q+3)/(4+3*q)*q;
+    var ce=(c1*z1+q*c2*z2)/(1+q);
+    var s1=Math.sqrt(Math.max(0,1-z1*z1));
+    var s2=Math.sqrt(Math.max(0,1-z2*z2));
+    var cp=Math.max(c1*s1,fac*c2*s2);
+    ve+=w[i]*(ce-me)*(ce-me);vp+=w[i]*(cp-mp2)*(cp-mp2);vq+=w[i]*(q-mq)*(q-mq);
+  }
+  return{w,Neff,wsum:sum,post:{me,mp:mp2,mq,se:Math.sqrt(ve/sum),sp:Math.sqrt(vp/sum),sq:Math.sqrt(vq/sum)}};
+}
+
+function computeWs(iota, alpha, delta){
+  var cosi=Math.cos(iota),sini=Math.sin(iota);
+  var cosi2=cosi*cosi,sini2=sini*sini;
+  var skyFactor=0.75+0.25*Math.cos(2*delta)*Math.cos(2*alpha);
+  var C=0.25*(1+cosi2)*(1+cosi2)+cosi2;
+  var w_eff=1.0;
+  var w_p=Math.sqrt((sini2*(cosi2+1))/(C+1e-6));
+  w_p*=skyFactor;
+  var w_q=0.45+0.25*sini2;
+  w_q*=Math.sqrt(skyFactor);
+  return{w_eff:w_eff,w_p:w_p,w_q:w_q};
+}
+
+function resampleIdx(w,wsum,M){
+  var N=w.length,idx=new Int32Array(M);
+  var step=wsum/M,u=Math.random()*step,cumul=0,j=0;
+  for(var i=0;i<N&&j<M;i++){cumul+=w[i];while(u<=cumul&&j<M){idx[j++]=i;u+=step;}}
+  while(j<M)idx[j++]=idx[Math.max(0,j-2)]||0;
+  return idx;
+}
+
+function proj(wx,wy,wz,rx,ry,cx,cy,sc){
+  var cY=Math.cos(ry),sY=Math.sin(ry);
+  var x2=wx*cY-wy*sY,y2=wx*sY+wy*cY;
+  var cX=Math.cos(rx),sX=Math.sin(rx);
+  var y3=y2*cX-wz*sX,z3=y2*sX+wz*cX;
+  var d=3.5,pw=d/(d+y3);
+  return{sx:cx+x2*pw*sc,sy:cy-z3*pw*sc,depth:y3};
+}
+
+function viridis(t){
+  t=t<0?0:t>1?1:t;
+  var stops=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+  var tt=t*4,i=Math.min(3,Math.floor(tt)),f=tt-i;
+  var a=stops[i],b=stops[Math.min(4,i+1)];
+  return'rgb('+Math.round(a[0]+(b[0]-a[0])*f)+','+Math.round(a[1]+(b[1]-a[1])*f)+','+Math.round(a[2]+(b[2]-a[2])*f)+')';
+}
+
+function renderBall(id,xi,yi,zi,wi,rx,ry,lbl){
+  var cv=document.getElementById(id);
+  var ctx=cv.getContext('2d');
+  var W=cv.clientWidth||Math.round(cv.width/DPR)||1;
+  var H=cv.clientHeight||Math.round(cv.height/DPR)||1;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,W,H);
+  var cx=W/2,cy=H/2,sc=W*0.32;
+  ctx.strokeStyle='#252525';ctx.lineWidth=0.8;
+  for(var lat=-60;lat<=60;lat+=30){
+    var ph=lat*Math.PI/180;
+    ctx.beginPath();
+    for(var lon=0;lon<=360;lon+=6){
+      var th=lon*Math.PI/180;
+      var p=proj(Math.cos(ph)*Math.cos(th),Math.cos(ph)*Math.sin(th),Math.sin(ph),rx,ry,cx,cy,sc);
+      lon===0?ctx.moveTo(p.sx,p.sy):ctx.lineTo(p.sx,p.sy);
+    }
+    ctx.stroke();
+  }
+  for(var lon=0;lon<360;lon+=30){
+    var th=lon*Math.PI/180;
+    ctx.beginPath();
+    for(var lat2=-90;lat2<=90;lat2+=6){
+      var ph=lat2*Math.PI/180;
+      var p=proj(Math.cos(ph)*Math.cos(th),Math.cos(ph)*Math.sin(th),Math.sin(ph),rx,ry,cx,cy,sc);
+      lat2===-90?ctx.moveTo(p.sx,p.sy):ctx.lineTo(p.sx,p.sy);
+    }
+    ctx.stroke();
+  }
+  ctx.strokeStyle='#3a3a3a';ctx.lineWidth=1.2;
+  ctx.beginPath();
+  for(var a=0;a<=360;a+=3){
+    var th=a*Math.PI/180;
+    var p=proj(Math.cos(th),Math.sin(th),0,rx,ry,cx,cy,sc);
+    a===0?ctx.moveTo(p.sx,p.sy):ctx.lineTo(p.sx,p.sy);
+  }
+  ctx.stroke();
+  if(showAxes){
+    var fs=Math.max(11,Math.round(W*0.04));
+    [[[1.35,0,0],'#e55','x'],[[0,1.35,0],'#5c5','y'],[[0,0,1.35],'#55e','z_{\\rm L}']].forEach(function(ax){
+      var p0=proj(0,0,0,rx,ry,cx,cy,sc);
+      var p1=proj(ax[0][0],ax[0][1],ax[0][2],rx,ry,cx,cy,sc);
+      ctx.strokeStyle=ax[1];ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(p0.sx,p0.sy);ctx.lineTo(p1.sx,p1.sy);ctx.stroke();
+      drawMath(ctx, ax[2], p1.sx+fs*0.6, p1.sy, fs, 0, ax[1]);
+    });
+  }
+  var pts=[];
+  for(var i=0;i<xi.length;i++){
+    var p=proj(xi[i],yi[i],zi[i],rx,ry,cx,cy,sc);
+    pts.push({sx:p.sx,sy:p.sy,depth:p.depth,w:wi[i]});
+  }
+  pts.sort(function(a,b){return a.depth-b.depth;});
+  for(var i=0;i<pts.length;i++){
+    var t=pts[i].w;
+    var stops=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+    var tt=t*4,ii=Math.min(3,Math.floor(tt)),f=tt-ii;
+    var aa=stops[ii],bb=stops[Math.min(4,ii+1)];
+    var r2=Math.round(aa[0]+(bb[0]-aa[0])*f);
+    var g2=Math.round(aa[1]+(bb[1]-aa[1])*f);
+    var b2=Math.round(aa[2]+(bb[2]-aa[2])*f);
+    var alpha=0.15+0.8*t,sz=W*(0.003+0.004*t);
+    ctx.beginPath();
+    ctx.arc(pts[i].sx,pts[i].sy,sz,0,2*Math.PI);
+    ctx.fillStyle='rgba('+r2+','+g2+','+b2+','+alpha.toFixed(2)+')';
+    ctx.fill();
+  }
+  var tlblH=Math.max(12,Math.round(W*0.05));
+  drawMath(ctx, lbl, tlblH*0.7, tlblH*0.8, tlblH, 0, '#888');
+}
+
+function h1d(arr,w,lo,hi,nb){
+  var H=new Float64Array(nb),dx=(hi-lo)/nb;
+  for(var i=0;i<arr.length;i++){var b=Math.floor((arr[i]-lo)/dx);if(b>=0&&b<nb)H[b]+=w[i];}
+  return H;
+}
+function h2d(ax,ay,w,lox,hix,loy,hiy,nb){
+  var H=new Float64Array(nb*nb),dx=(hix-lox)/nb,dy=(hiy-loy)/nb;
+  for(var i=0;i<ax.length;i++){
+    var bx=Math.floor((ax[i]-lox)/dx),by=Math.floor((ay[i]-loy)/dy);
+    if(bx>=0&&bx<nb&&by>=0&&by<nb)H[by*nb+bx]+=w[i];
+  }
+  return H;
+}
+
+function drawCornerCells(ctx,NDIM,arrs,w,lo,hi,trueVals,ML,MT,cw,ch,pad,nb,labelH,tickH,labelOffL,labelOffB){
+  for(var row=0;row<NDIM;row++){
+    for(var col=0;col<=row;col++){
+      var x0=ML+col*cw+pad,y0=MT+row*ch+pad;
+      var cws=cw-2*pad,chs=ch-2*pad;
+      ctx.fillStyle='#181818';ctx.fillRect(x0,y0,cws,chs);
+      if(row===col){
+        var H1=h1d(arrs[row],w,lo[row],hi[row],nb);
+        var hmax=0;for(var k=0;k<nb;k++)if(H1[k]>hmax)hmax=H1[k];
+        if(hmax>0){var bw=cws/nb;for(var k=0;k<nb;k++){var t=H1[k]/hmax;ctx.fillStyle=viridis(0.4+0.6*t);ctx.fillRect(x0+k*bw,y0+chs-t*chs,bw+0.5,t*chs);}}
+      } else {
+        var H2d=h2d(arrs[col],arrs[row],w,lo[col],hi[col],lo[row],hi[row],nb);
+        var hmax=0;for(var k=0;k<H2d.length;k++)if(H2d[k]>hmax)hmax=H2d[k];
+        if(hmax>0){var pw=cws/nb,ph2=chs/nb;for(var iy=0;iy<nb;iy++){for(var ix=0;ix<nb;ix++){var v=H2d[iy*nb+ix]/hmax;if(v<0.003)continue;ctx.fillStyle=viridis(Math.pow(v,0.45));ctx.fillRect(x0+ix*pw,y0+chs-(iy+1)*ph2,pw+0.5,ph2+0.5);}}}
+      }
+      ctx.strokeStyle='#333';ctx.lineWidth=0.5;ctx.strokeRect(x0,y0,cws,chs);
+      if(trueVals[col]!==null){
+        var txp=x0+(trueVals[col]-lo[col])/(hi[col]-lo[col])*cws;
+        ctx.strokeStyle='rgba(255,200,80,0.75)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(txp,y0);ctx.lineTo(txp,y0+chs);ctx.stroke();
+      }
+      if(row!==col&&trueVals[row]!==null){
+        var typ=y0+chs-(trueVals[row]-lo[row])/(hi[row]-lo[row])*chs;
+        ctx.strokeStyle='rgba(255,200,80,0.75)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(x0,typ);ctx.lineTo(x0+cws,typ);ctx.stroke();
+      }
+      ctx.fillStyle='#555';ctx.font=tickH+'px monospace';
+      if(col===0&&row>0){ctx.textAlign='right';ctx.fillText(hi[row].toFixed(1),x0-2,y0+8);ctx.fillText(lo[row].toFixed(1),x0-2,y0+chs);}
+      if(row===NDIM-1){ctx.textAlign='left';ctx.fillText(lo[col].toFixed(1),x0,y0+chs+tickH+2);ctx.textAlign='right';ctx.fillText(hi[col].toFixed(1),x0+cws,y0+chs+tickH+2);}
+    }
+  }
+}
+
+function renderCorner(wdata){
+  var cv=document.getElementById('cornercv');
+  var ctx=cv.getContext('2d');
+  var W=cv.clientWidth||Math.round(cv.width/DPR)||1;
+  var H2=cv.clientHeight||Math.round(cv.height/DPR)||1;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,W,H2);
+
+  /* ---- MAIN 5×5 corner ---- */
+  var NDIM=5;
+  var names=['\\chi_1','\\chi_2','z_1','z_2','q'];
+  var lo=[0,0,-1,-1,0.1],hi=[1,1,1,1,1];
+  var arrs=[wdata.c1,wdata.c2,wdata.z1,wdata.z2,wdata.q];
+  var w=wdata.w;
+  var labelH=Math.max(11,Math.round(W*0.027));
+  var tickH=Math.max(7,Math.round(W*0.014));
+  var ML=Math.round(labelH*2.2),MR=6,MT=6,MB=Math.round(labelH*2.2);
+  var cw=(W-ML-MR)/NDIM,ch=(H2-MT-MB)/NDIM;
+  var pad=3,nb=40;
+  var trueVals=wdata.tcomps||[null,null,null,null,wdata.tq];
+  drawCornerCells(ctx,NDIM,arrs,w,lo,hi,trueVals,ML,MT,cw,ch,pad,nb,labelH,tickH);
+  /* main axis labels */
+  for(var i=0;i<NDIM;i++){
+    var cy_lbl=MT+(i+0.5)*ch;
+    drawMath(ctx,names[i],ML-labelH*1.1,cy_lbl,labelH,-Math.PI/2);
+    var cx_lbl=ML+(i+0.5)*cw;
+    drawMath(ctx,names[i],cx_lbl,MT+NDIM*ch+labelH*1.3,labelH,0);
+  }
+
+  /* ---- MINI 3×3 corner (χ_eff, χ_p, q) ---- */
+  var NDIM_M=3;
+  var names_m=['\\chi_{\\rm eff}','\\chi_p','q'];
+  var lo_m=[-1,0,0.1],hi_m=[1,1,1];
+  var arrs_m=[wdata.ce,wdata.cp,wdata.q];
+  var trueVals_m=[wdata.tce,wdata.tcp,wdata.tq];
+  /* position mini in the upper-right white space: start after col=2 of main grid */
+  var x0m=ML+2*cw, y0m=MT;
+  var mlabelH=Math.max(9,Math.round(W*0.022));
+  var mpad=4,mnb=36;
+  /* slight dark overlay to visually separate from main empty cells */
+  ctx.fillStyle='rgba(10,10,10,0.55)';
+  ctx.fillRect(x0m,y0m,3*cw,3*ch);
+  drawCornerCells(ctx,NDIM_M,arrs_m,w,lo_m,hi_m,trueVals_m,x0m,y0m,cw,ch,mpad,mnb,mlabelH,tickH);
+  /* mini border */
+  ctx.strokeStyle='#3a5a3a';ctx.lineWidth=1.2;
+  ctx.strokeRect(x0m+0.5,y0m+0.5,3*cw-1,3*ch-1);
+  /* mini axis labels — variable name inside the top of each diagonal cell */
+  for(var i=0;i<NDIM_M;i++){
+    var dcx=x0m+i*cw+cw/2;
+    var dcy=y0m+i*ch+mpad+mlabelH*0.65;
+    drawMath(ctx,names_m[i],dcx,dcy,mlabelH,0);
+  }
+}
+
+function setTrueMode(mode){
+  trueMode=mode;
+  document.getElementById('panel-eff').style.display=mode==='eff'?'':'none';
+  document.getElementById('panel-comp').style.display=mode==='comp'?'':'none';
+  document.getElementById('tab-eff').classList.toggle('active',mode==='eff');
+  document.getElementById('tab-comp').classList.toggle('active',mode==='comp');
+  update();
+}
+
+function setWeightMode(mode){
+  weightMode=mode;
+  document.getElementById('panel-w-manual').style.display=mode==='manual'?'':'none';
+  document.getElementById('panel-w-orient').style.display=mode==='orient'?'':'none';
+  document.getElementById('tab-w-manual').classList.toggle('active',mode==='manual');
+  document.getElementById('tab-w-orient').classList.toggle('active',mode==='orient');
+  update();
+}
+
+function renderBalls(){
+  if(!weights)return;
+  renderBall('cv1',weights.x1,weights.y1,weights.z1a,weights.wn,view[0].rotX,view[0].rotY,'S_1');
+  renderBall('cv2',weights.x2,weights.y2,weights.z2a,weights.wn,view[1].rotX,view[1].rotY,'S_2');
+}
+
+function update(){
+  if(!S)return;
+  var snr=parseFloat(document.getElementById('snr').value);
+  var t_ceff,t_cp,t_q,trueCompVals;
+  if(trueMode==='eff'){
+    t_ceff=parseFloat(document.getElementById('t_ceff').value);
+    t_cp=parseFloat(document.getElementById('t_cp').value);
+    t_q=parseFloat(document.getElementById('t_q').value);
+    trueCompVals=[null,null,null,null,t_q];
+  } else {
+    var tc1=parseFloat(document.getElementById('t_c1').value);
+    var tc2=parseFloat(document.getElementById('t_c2').value);
+    var tz1=parseFloat(document.getElementById('t_z1').value);
+    var tz2=parseFloat(document.getElementById('t_z2').value);
+    t_q=parseFloat(document.getElementById('t_q2').value);
+    var cfac=(4*t_q+3)/(4+3*t_q)*t_q;
+    var ts1=Math.sqrt(Math.max(0,1-tz1*tz1));
+    var ts2=Math.sqrt(Math.max(0,1-tz2*tz2));
+    t_ceff=(tc1*tz1+t_q*tc2*tz2)/(1+t_q);
+    t_cp=Math.max(tc1*ts1,cfac*tc2*ts2);
+    trueCompVals=[tc1,tc2,tz1,tz2,t_q];
+  }
+  var w_eff,w_p,w_q;
+  if(weightMode==='manual'){
+    w_eff=parseFloat(document.getElementById('w_eff').value);
+    w_p=parseFloat(document.getElementById('w_p').value);
+    w_q=parseFloat(document.getElementById('w_q').value);
+  } else {
+    var iota=parseFloat(document.getElementById('iota').value);
+    var alpha=parseFloat(document.getElementById('alpha').value);
+    var delta=parseFloat(document.getElementById('delta').value);
+    var ws=computeWs(iota,alpha,delta);
+    w_eff=ws.w_eff; w_p=ws.w_p; w_q=ws.w_q;
+    document.getElementById('v_iota').textContent=iota.toFixed(2);
+    document.getElementById('v_alpha').textContent=alpha.toFixed(2);
+    document.getElementById('v_delta').textContent=delta.toFixed(2);
+    document.getElementById('w_orient_info').textContent=
+      'w_eff='+w_eff.toFixed(2)+', w_p='+w_p.toFixed(2)+', w_q='+w_q.toFixed(2);
+  }
+  var beta_q=parseFloat(document.getElementById('beta_q').value);
+  var Nshow=parseInt(document.getElementById('Nshow').value);
+
+  document.getElementById('v_snr').textContent=snr.toFixed(0);
+  if(trueMode==='eff'){
+    document.getElementById('v_tceff').textContent=t_ceff.toFixed(2);
+    document.getElementById('v_tcp').textContent=t_cp.toFixed(2);
+    document.getElementById('v_tq').textContent=t_q.toFixed(2);
+  } else {
+    document.getElementById('v_tc1').textContent=parseFloat(document.getElementById('t_c1').value).toFixed(2);
+    document.getElementById('v_tc2').textContent=parseFloat(document.getElementById('t_c2').value).toFixed(2);
+    document.getElementById('v_tz1').textContent=parseFloat(document.getElementById('t_z1').value).toFixed(2);
+    document.getElementById('v_tz2').textContent=parseFloat(document.getElementById('t_z2').value).toFixed(2);
+    document.getElementById('v_tq2').textContent=t_q.toFixed(2);
+  }
+  if(weightMode==='manual'){
+    document.getElementById('v_weff').textContent=w_eff.toFixed(2);
+    document.getElementById('v_wp').textContent=w_p.toFixed(2);
+    document.getElementById('v_wq').textContent=w_q.toFixed(2);
+  }
+  document.getElementById('v_bq').textContent=beta_q.toFixed(1);
+  document.getElementById('v_Ns').textContent=Nshow;
+
+  var res=computeWeights(S,snr,t_ceff,t_cp,t_q,w_eff,w_p,w_q,beta_q);
+  var p=res.post;
+  document.getElementById('info').innerHTML=
+    'N_eff: '+Math.round(res.Neff)+'  ('+((100*res.Neff/S.N).toFixed(1))+'%)<br>'+
+    '&#967;_eff: '+p.me.toFixed(3)+' &plusmn; '+p.se.toFixed(3)+
+    ' (Fisher: &plusmn;'+(1/(snr*w_eff)).toFixed(3)+')<br>'+
+    '&#967;_p: '+p.mp.toFixed(3)+' &plusmn; '+p.sp.toFixed(3)+'<br>'+
+    'q: '+p.mq.toFixed(3)+' &plusmn; '+p.sq.toFixed(3);
+
+  var idx=resampleIdx(res.w,res.wsum,Nshow);
+  var x1=new Float32Array(Nshow),y1=new Float32Array(Nshow),z1a=new Float32Array(Nshow);
+  var x2=new Float32Array(Nshow),y2=new Float32Array(Nshow),z2a=new Float32Array(Nshow);
+  var wn=new Float32Array(Nshow),wmax=0;
+  var rc1=new Float32Array(Nshow),rc2=new Float32Array(Nshow);
+  var rz1=new Float32Array(Nshow),rz2=new Float32Array(Nshow);
+  var rq=new Float32Array(Nshow),rw=new Float32Array(Nshow);
+  var rce=new Float32Array(Nshow),rcp=new Float32Array(Nshow);
+  for(var i=0;i<Nshow;i++){
+    var k=idx[i];
+    var c1v=S.c1[k],c2v=S.c2[k],zz1=S.z1[k],zz2=S.z2[k],ph1=S.p1[k],ph2=S.p2[k];
+    var qq=S.q[k];
+    var s1=Math.sqrt(1-zz1*zz1),s2=Math.sqrt(1-zz2*zz2);
+    x1[i]=c1v*s1*Math.cos(ph1);y1[i]=c1v*s1*Math.sin(ph1);z1a[i]=c1v*zz1;
+    x2[i]=c2v*s2*Math.cos(ph2);y2[i]=c2v*s2*Math.sin(ph2);z2a[i]=c2v*zz2;
+    wn[i]=res.w[k];if(wn[i]>wmax)wmax=wn[i];
+    rc1[i]=c1v;rc2[i]=c2v;rz1[i]=zz1;rz2[i]=zz2;rq[i]=qq;rw[i]=res.w[k];
+    var fac=(4*qq+3)/(4+3*qq)*qq;
+    rce[i]=(c1v*zz1+qq*c2v*zz2)/(1+qq);
+    rcp[i]=Math.max(c1v*s1,fac*c2v*s2);
+  }
+  for(var i=0;i<Nshow;i++)wn[i]/=wmax;
+  weights={x1,y1,z1a,x2,y2,z2a,wn};
+  renderBalls();
+  renderCorner({c1:rc1,c2:rc2,z1:rz1,z2:rz2,q:rq,w:rw,ce:rce,cp:rcp,tce:t_ceff,tcp:t_cp,tq:t_q,tcomps:trueCompVals});
+}
+
+function redraw(){
+  var Nk=parseInt(document.getElementById('Nk').value);
+  document.getElementById('v_Nk').textContent=Nk;
+  S=drawSamples(Nk*1000);
+  update();
+}
+
+function preset(ce,cp,q,snr){
+  setTrueMode('eff');
+  document.getElementById('t_ceff').value=ce;
+  document.getElementById('t_cp').value=cp;
+  document.getElementById('t_q').value=q;
+  document.getElementById('snr').value=snr;
+  update();
+}
+
+function resetView(){
+  view[0].rotX=DEFAULT_RX;view[0].rotY=DEFAULT_RY;
+  view[1].rotX=DEFAULT_RX;view[1].rotY=DEFAULT_RY;
+  renderBalls();
+}
+function toggleAxes(){showAxes=!showAxes;renderBalls();}
+
+['cv1','cv2'].forEach(function(id,i){
+  var cv=document.getElementById(id),v=view[i];
+  function onMove(dx,dy){v.rotY+=dx*0.012;v.rotX+=dy*0.012;renderBalls();}
+  cv.addEventListener('mousedown',function(e){v.dragging=true;v.lx=e.clientX;v.ly=e.clientY;e.preventDefault();});
+  window.addEventListener('mousemove',function(e){
+    if(!v.dragging)return;
+    onMove(e.clientX-v.lx,e.clientY-v.ly);v.lx=e.clientX;v.ly=e.clientY;
+  });
+  window.addEventListener('mouseup',function(){v.dragging=false;});
+  cv.addEventListener('touchstart',function(e){
+    v.dragging=true;v.lx=e.touches[0].clientX;v.ly=e.touches[0].clientY;e.preventDefault();
+  },{passive:false});
+  cv.addEventListener('touchmove',function(e){
+    if(!v.dragging)return;
+    onMove(e.touches[0].clientX-v.lx,e.touches[0].clientY-v.ly);
+    v.lx=e.touches[0].clientX;v.ly=e.touches[0].clientY;e.preventDefault();
+  },{passive:false});
+  cv.addEventListener('touchend',function(){v.dragging=false;});
+});
+
+['t_ceff','t_cp','t_q','snr','w_eff','w_p','w_q','iota','alpha','delta','beta_q','Nshow','t_c1','t_c2','t_z1','t_z2','t_q2'].forEach(function(id){
+  document.getElementById(id).addEventListener('input',update);
+});
+document.getElementById('Nk').addEventListener('change',redraw);
+['desc-panel'].forEach(function(id){
+  document.getElementById(id).addEventListener('toggle',function(){
+    resizeAll();
+    if(S)update();
+  });
+});
+
+function resizeAll(){
+  DPR=Math.max(1,window.devicePixelRatio||1);
+  var workspace=document.getElementById('workspace');
+  var cornerWrap=document.getElementById('corner-wrap');
+  var ccv=document.getElementById('cornercv');
+  var ballsDiv=document.querySelector('#sphere-body #balls');
+  var desktop=window.innerWidth>1100;
+  var workspaceTop=workspace.getBoundingClientRect().top;
+  var availH=Math.max(260,window.innerHeight-workspaceTop-12);
+  var cornerW=cornerWrap.clientWidth||300;
+  var cornerSize=Math.min(cornerW,desktop?availH:Math.max(280,Math.floor(availH*0.92)));
+  cornerSize=Math.max(cornerSize,280);
+  setupCanvasSize(ccv,cornerSize,cornerSize);
+
+  var sphereW=ballsDiv.clientWidth||300;
+  var stackedBalls=window.innerWidth<=700;
+  var ballSize=stackedBalls?sphereW:Math.floor((sphereW-6)/2);
+  ballSize=Math.max(Math.min(ballSize,desktop?150:220),96);
+  ['cv1','cv2'].forEach(function(id){
+    setupCanvasSize(document.getElementById(id),ballSize,ballSize);
+  });
+}
+
+window.addEventListener('resize',function(){resizeAll();if(S)update();});
+resizeAll();
+S=drawSamples(100000);
+update();
+</script>
+</body>
+</html>
