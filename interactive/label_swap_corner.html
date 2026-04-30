@@ -76,6 +76,12 @@ canvas.pairplot{display:block;width:100%;background:#0a0a0a;border:1px solid #33
       <div class="pr"><label>&sigma;<sub>zB</sub></label><input type="range" id="sigZB" min="0.01" max="0.4" step="0.01" value="0.16"><span class="val" id="v_sigZB">0.16</span></div>
     </div>
     <div class="param-group">
+      <div class="pgt">Correlation &rho;</div>
+      <div class="pr"><label>&rho;<sub>m</sub></label><input type="range" id="rhoM" min="-0.95" max="0.95" step="0.05" value="0"><span class="val" id="v_rhoM">0.00</span></div>
+      <div class="pr"><label>&rho;<sub>&chi;</sub></label><input type="range" id="rhoChi" min="-0.95" max="0.95" step="0.05" value="0"><span class="val" id="v_rhoChi">0.00</span></div>
+      <div class="pr"><label>&rho;<sub>z</sub></label><input type="range" id="rhoZ" min="-0.95" max="0.95" step="0.05" value="0"><span class="val" id="v_rhoZ">0.00</span></div>
+    </div>
+    <div class="param-group">
       <div class="pgt">Samples</div>
       <div class="pr"><label>N (k)</label><input type="range" id="Nk" min="5" max="100" step="5" value="50"><span class="val" id="v_Nk">50</span></div>
     </div>
@@ -177,9 +183,16 @@ var pairDefs=[
 ];
 
 function getSig(key){
-  if(key==='M')return{sx:gv('sigA'),sy:gv('sigB')};
-  if(key==='C')return{sx:gv('sigCA'),sy:gv('sigCB')};
-  return{sx:gv('sigZA'),sy:gv('sigZB')};
+  if(key==='M')return{sx:gv('sigA'),sy:gv('sigB'),rho:gv('rhoM')};
+  if(key==='C')return{sx:gv('sigCA'),sy:gv('sigCB'),rho:gv('rhoChi')};
+  return{sx:gv('sigZA'),sy:gv('sigZB'),rho:gv('rhoZ')};
+}
+// Correlated bivariate normal: returns [x,y] given independent z1,z2
+function corrNorm(mu1,mu2,s1,s2,rho){
+  var z1=randn(),z2=randn();
+  var x=mu1+s1*z1;
+  var y=mu2+s2*(rho*z1+Math.sqrt(1-rho*rho)*z2);
+  return[x,y];
 }
 function gv(id){return parseFloat(document.getElementById(id).value);}
 function gi(id){return parseInt(document.getElementById(id).value);}
@@ -196,10 +209,11 @@ function generateSamples(){
   var mA=new Float32Array(N),mB=new Float32Array(N);
   var cA=new Float32Array(N),cB=new Float32Array(N);
   var zA=new Float32Array(N),zB=new Float32Array(N);
+  var rhoM=gv('rhoM'),rhoChi=gv('rhoChi'),rhoZ=gv('rhoZ');
   for(var i=0;i<N;i++){
-    mA[i]=blobs.M.x+sA*randn(); mB[i]=blobs.M.y+sB*randn();
-    cA[i]=blobs.C.x+sCA*randn(); cB[i]=blobs.C.y+sCB*randn();
-    zA[i]=blobs.Z.x+sZA*randn(); zB[i]=blobs.Z.y+sZB*randn();
+    var pm=corrNorm(blobs.M.x,blobs.M.y,sA,sB,rhoM); mA[i]=pm[0]; mB[i]=pm[1];
+    var pc=corrNorm(blobs.C.x,blobs.C.y,sCA,sCB,rhoChi); cA[i]=pc[0]; cB[i]=pc[1];
+    var pz=corrNorm(blobs.Z.x,blobs.Z.y,sZA,sZB,rhoZ); zA[i]=pz[0]; zB[i]=pz[1];
   }
   var m1=new Float32Array(N),m2=new Float32Array(N);
   var c1=new Float32Array(N),c2=new Float32Array(N);
@@ -263,10 +277,21 @@ function drawBlob(def){
   var cen=d2c(cv,blob.x,blob.y,def);
   var sx=sig.sx/(def.xhi-def.xlo)*(W-2*p);
   var sy=sig.sy/(def.yhi-def.ylo)*(H-2*p);
-  ctx.fillStyle='rgba(40,90,140,0.12)';ctx.strokeStyle='#4a8aaa';ctx.lineWidth=1.2;
-  ctx.beginPath();ctx.ellipse(cen.px,cen.py,sx*2,sy*2,0,0,2*Math.PI);ctx.fill();ctx.stroke();
-  ctx.fillStyle='rgba(40,90,140,0.10)';ctx.strokeStyle='#6aaccc';ctx.lineWidth=0.8;
-  ctx.beginPath();ctx.ellipse(cen.px,cen.py,sx,sy,0,0,2*Math.PI);ctx.fill();ctx.stroke();
+  var rho=sig.rho||0;
+  // Eigen-decomposition of 2x2 correlation matrix to get ellipse tilt
+  // Cov = [[sx²,rho*sx*sy],[rho*sx*sy,sy²]]
+  var a=sx*sx,b=rho*sx*sy,d=sy*sy;
+  var tr=a+d,det=a*d-b*b;
+  var l1=(tr+Math.sqrt(Math.max(0,(tr*tr-4*det))))/2;
+  var l2=(tr-Math.sqrt(Math.max(0,(tr*tr-4*det))))/2;
+  var angle=(Math.abs(b)<1e-10)?0:-Math.atan2(l1-a,b);
+  var r1=Math.sqrt(Math.max(0,l1)),r2=Math.sqrt(Math.max(0,l2));
+  function drawEll(scale,fill,stroke,lw){
+    ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=lw;
+    ctx.beginPath();ctx.ellipse(cen.px,cen.py,r1*scale,r2*scale,angle,0,2*Math.PI);ctx.fill();ctx.stroke();
+  }
+  drawEll(2,'rgba(40,90,140,0.12)','#4a8aaa',1.2);
+  drawEll(1,'rgba(40,90,140,0.10)','#6aaccc',0.8);
   ctx.fillStyle='#fc6';ctx.beginPath();ctx.arc(cen.px,cen.py,4,0,2*Math.PI);ctx.fill();
   // axis labels
   var lH=Math.max(10,Math.round(W*0.068));
@@ -414,7 +439,7 @@ function toggleView(){
 // ──────────────────────────────────────────────
 // Slider handlers
 // ──────────────────────────────────────────────
-[['sigA',1],['sigB',1],['sigCA',2],['sigCB',2],['sigZA',2],['sigZB',2],['Nk',0]].forEach(function(s){
+[['sigA',1],['sigB',1],['sigCA',2],['sigCB',2],['sigZA',2],['sigZB',2],['rhoM',2],['rhoChi',2],['rhoZ',2],['Nk',0]].forEach(function(s){
   var el=document.getElementById(s[0]);
   function upd(){document.getElementById('v_'+s[0]).textContent=parseFloat(el.value).toFixed(s[1]);}
   el.addEventListener('input',function(){upd();scheduleUpdate();});
