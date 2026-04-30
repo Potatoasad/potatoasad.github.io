@@ -1,0 +1,339 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>GW label swap</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111;color:#ddd;font-family:monospace;font-size:12px;padding:8px;max-width:1400px;margin:0 auto}
+h2{font-size:13px;color:#fc6;margin-bottom:6px}
+#layout{display:grid;grid-template-columns:minmax(260px,300px) 1fr;gap:8px;align-items:start}
+.box{background:#1e1e1e;border:1px solid #333;border-radius:4px;padding:6px;margin-bottom:6px}
+.bt{color:#6cf;font-weight:bold;font-size:11px;margin-bottom:4px}
+details summary{cursor:pointer;color:#888;font-size:10px;list-style:none;padding:2px 0}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:'▸ edit params';color:#555;margin-left:4px}
+details[open] summary::after{content:'▾ hide'}
+.row{display:flex;align-items:center;gap:4px;margin-bottom:2px}
+.row label{min-width:86px;color:#aaa;font-size:10px}
+.row input[type=range]{flex:1;height:14px}
+.row .val{width:36px;text-align:right;color:#ff9;font-size:10px}
+.sep{border-top:1px solid #2a2a2a;margin:4px 0}
+#blobgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.cv-wrap{display:flex;flex-direction:column;align-items:center}
+.cv-wrap:last-child{grid-column:1/-1}
+canvas.blob{background:#0d0d0d;border:1px solid #333;border-radius:4px;cursor:crosshair;touch-action:none;display:block;width:100%;height:auto}
+.clbl{color:#666;font-size:9px;margin-top:2px;text-align:center;line-height:1.3}
+#corner-wrap{background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:4px;display:flex;justify-content:center}
+#cornercv{display:block;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:4px}
+#info{color:#9d9;font-size:10px;line-height:1.6;margin-top:4px}
+@media(max-width:860px){#layout{grid-template-columns:1fr}}
+</style>
+</head><body>
+<h2>GW label-swap: drag blobs → see folding in corner plot</h2>
+<div id="layout">
+<div id="sidebar">
+  <div class="box">
+    <div class="bt">Blob positions — drag to move</div>
+    <div id="blobgrid">
+      <div class="cv-wrap"><canvas id="cvM" class="blob"></canvas><div class="clbl">m_A vs m_B</div></div>
+      <div class="cv-wrap"><canvas id="cvC" class="blob"></canvas><div class="clbl">χ_A vs χ_B</div></div>
+      <div class="cv-wrap"><canvas id="cvZ" class="blob"></canvas><div class="clbl">cos θ_A vs cos θ_B</div></div>
+    </div>
+  </div>
+  <div class="box">
+    <div class="bt">Model params</div>
+    <details id="pd">
+      <summary></summary>
+      <div style="margin-top:6px">
+        <div style="color:#888;font-size:9px;margin-bottom:2px">Mass</div>
+        <div class="row"><label>σ_mA</label><input type="range" id="sigA" min="0.5" max="20" step="0.5" value="5"><span class="val" id="v_sigA">5.0</span></div>
+        <div class="row"><label>σ_mB</label><input type="range" id="sigB" min="0.5" max="20" step="0.5" value="5"><span class="val" id="v_sigB">5.0</span></div>
+        <div class="sep"></div>
+        <div style="color:#888;font-size:9px;margin-bottom:2px">Spin magnitude</div>
+        <div class="row"><label>σ_χA</label><input type="range" id="sigCA" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigCA">0.08</span></div>
+        <div class="row"><label>σ_χB</label><input type="range" id="sigCB" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigCB">0.08</span></div>
+        <div class="sep"></div>
+        <div style="color:#888;font-size:9px;margin-bottom:2px">Cos tilt</div>
+        <div class="row"><label>σ_zA</label><input type="range" id="sigZA" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigZA">0.08</span></div>
+        <div class="row"><label>σ_zB</label><input type="range" id="sigZB" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigZB">0.08</span></div>
+        <div class="sep"></div>
+        <div style="color:#888;font-size:9px;margin-bottom:2px">Samples</div>
+        <div class="row"><label>N (k)</label><input type="range" id="Nk" min="5" max="100" step="5" value="30"><span class="val" id="v_Nk">30</span></div>
+      </div>
+    </details>
+    <div id="info">–</div>
+  </div>
+</div>
+<div id="main">
+  <div id="corner-wrap"><canvas id="cornercv"></canvas></div>
+</div>
+</div>
+<script>
+// ---- blob state (data coords) ----
+var blobs={M:{x:35,y:20},C:{x:0.3,y:0.6},Z:{x:0.8,y:-0.2}};
+var blobDefs=[
+  {id:'cvM',key:'M',xlo:5,xhi:90,ylo:5,yhi:90,xl:'m_A',yl:'m_B',diag:true},
+  {id:'cvC',key:'C',xlo:0,xhi:1,ylo:0,yhi:1,xl:'χ_A',yl:'χ_B',diag:false},
+  {id:'cvZ',key:'Z',xlo:-1,xhi:1,ylo:-1,yhi:1,xl:'zA',yl:'zB',diag:false},
+];
+
+function getSig(key){
+  if(key==='M')return{sx:getV('sigA'),sy:getV('sigB')};
+  if(key==='C')return{sx:getV('sigCA'),sy:getV('sigCB')};
+  return{sx:getV('sigZA'),sy:getV('sigZB')};
+}
+function getV(id){return parseFloat(document.getElementById(id).value);}
+function getI(id){return parseInt(document.getElementById(id).value);}
+
+// ---- RNG ----
+function randn(){var u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+
+// ---- samples ----
+var S=null;
+function generateSamples(){
+  var N=getI('Nk')*1000;
+  var mA=new Float32Array(N),mB=new Float32Array(N);
+  var cA=new Float32Array(N),cB=new Float32Array(N);
+  var zA=new Float32Array(N),zB=new Float32Array(N);
+  var sigA=getV('sigA'),sigB=getV('sigB');
+  var sigCA=getV('sigCA'),sigCB=getV('sigCB');
+  var sigZA=getV('sigZA'),sigZB=getV('sigZB');
+  for(var i=0;i<N;i++){
+    mA[i]=blobs.M.x+sigA*randn(); mB[i]=blobs.M.y+sigB*randn();
+    cA[i]=blobs.C.x+sigCA*randn(); cB[i]=blobs.C.y+sigCB*randn();
+    zA[i]=blobs.Z.x+sigZA*randn(); zB[i]=blobs.Z.y+sigZB*randn();
+  }
+  var m1=new Float32Array(N),m2=new Float32Array(N);
+  var c1=new Float32Array(N),c2=new Float32Array(N);
+  var z1=new Float32Array(N),z2=new Float32Array(N);
+  var fswap=0;
+  for(var i=0;i<N;i++){
+    if(mA[i]>=mB[i]){m1[i]=mA[i];m2[i]=mB[i];c1[i]=cA[i];c2[i]=cB[i];z1[i]=zA[i];z2[i]=zB[i];}
+    else{m1[i]=mB[i];m2[i]=mA[i];c1[i]=cB[i];c2[i]=cA[i];z1[i]=zB[i];z2[i]=zA[i];fswap++;}
+  }
+  S={N,m1,m2,c1,c2,z1,z2,fswap};
+}
+
+// ---- viridis ----
+function viridis(t){
+  t=t<0?0:t>1?1:t;
+  var st=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+  var tt=t*4,i=Math.min(3,Math.floor(tt)),f=tt-i;
+  var a=st[i],b=st[Math.min(4,i+1)];
+  return'rgb('+Math.round(a[0]+(b[0]-a[0])*f)+','+Math.round(a[1]+(b[1]-a[1])*f)+','+Math.round(a[2]+(b[2]-a[2])*f)+')';
+}
+
+// ---- blob canvas drawing ----
+// Canvas logical size (CSS px) — set once, never changed after init
+var BSIZ=120; // will be updated in resize
+
+function d2c(cv,dx,dy,def){
+  // data coords -> canvas CSS px coords
+  var W=cv.width/window.devicePixelRatio, H=cv.height/window.devicePixelRatio;
+  var pad=16;
+  return{
+    px:pad+(dx-def.xlo)/(def.xhi-def.xlo)*(W-2*pad),
+    py:(H-pad)-(dy-def.ylo)/(def.yhi-def.ylo)*(H-2*pad)
+  };
+}
+function c2d(cv,px,py,def){
+  var W=cv.width/window.devicePixelRatio, H=cv.height/window.devicePixelRatio;
+  var pad=16;
+  return{
+    x:def.xlo+(px-pad)/(W-2*pad)*(def.xhi-def.xlo),
+    y:def.ylo+((H-pad)-py)/(H-2*pad)*(def.yhi-def.ylo)
+  };
+}
+function clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v;}
+
+function drawBlob(def){
+  var cv=document.getElementById(def.id);
+  var dpr=window.devicePixelRatio||1;
+  var W=cv.width/dpr, H=cv.height/dpr;
+  var ctx=cv.getContext('2d');
+  // always reset transform then scale by DPR
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0d0d0d'; ctx.fillRect(0,0,W,H);
+  var pad=16;
+  // grid
+  ctx.strokeStyle='#222'; ctx.lineWidth=0.5;
+  for(var k=0;k<=4;k++){
+    var gx=pad+k/4*(W-2*pad), gy=pad+k/4*(H-2*pad);
+    ctx.beginPath();ctx.moveTo(gx,pad);ctx.lineTo(gx,H-pad);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(pad,gy);ctx.lineTo(W-pad,gy);ctx.stroke();
+  }
+  // diagonal for mass
+  if(def.diag){
+    ctx.strokeStyle='#2a3a2a'; ctx.lineWidth=0.8; ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(pad,H-pad);ctx.lineTo(W-pad,pad);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // axis labels
+  ctx.fillStyle='#555'; ctx.font='8px monospace'; ctx.textAlign='center';
+  ctx.fillText(def.xl, W/2, H-3);
+  ctx.save(); ctx.translate(9,H/2); ctx.rotate(-Math.PI/2); ctx.fillText(def.yl,0,0); ctx.restore();
+  // ellipse
+  var blob=blobs[def.key];
+  var sig=getSig(def.key);
+  var cen=d2c(cv,blob.x,blob.y,def);
+  var sx=sig.sx/(def.xhi-def.xlo)*(W-2*pad);
+  var sy=sig.sy/(def.yhi-def.ylo)*(H-2*pad);
+  ctx.fillStyle='rgba(40,90,140,0.12)'; ctx.strokeStyle='#4a8aaa'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.ellipse(cen.px,cen.py,sx*2,sy*2,0,0,2*Math.PI); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='rgba(40,90,140,0.10)'; ctx.strokeStyle='#6aaccc'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.ellipse(cen.px,cen.py,sx,sy,0,0,2*Math.PI); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#fc6';
+  ctx.beginPath(); ctx.arc(cen.px,cen.py,3,0,2*Math.PI); ctx.fill();
+}
+
+// ---- drag ----
+blobDefs.forEach(function(def){
+  var cv=document.getElementById(def.id);
+  var dragging=false;
+  function move(ex,ey){
+    var r=cv.getBoundingClientRect();
+    var dpr=window.devicePixelRatio||1;
+    // getBoundingClientRect gives CSS px, c2d works in CSS px (width/dpr)
+    var d=c2d(cv,ex-r.left,ey-r.top,def);
+    blobs[def.key].x=clamp(d.x,def.xlo,def.xhi);
+    blobs[def.key].y=clamp(d.y,def.ylo,def.yhi);
+    drawBlob(def);
+    scheduleUpdate();
+  }
+  cv.addEventListener('mousedown',function(e){dragging=true;move(e.clientX,e.clientY);e.preventDefault();});
+  window.addEventListener('mousemove',function(e){if(dragging)move(e.clientX,e.clientY);});
+  window.addEventListener('mouseup',function(){dragging=false;});
+  cv.addEventListener('touchstart',function(e){dragging=true;move(e.touches[0].clientX,e.touches[0].clientY);e.preventDefault();},{passive:false});
+  cv.addEventListener('touchmove',function(e){if(dragging)move(e.touches[0].clientX,e.touches[0].clientY);e.preventDefault();},{passive:false});
+  cv.addEventListener('touchend',function(){dragging=false;});
+});
+
+// ---- corner plot ----
+function h1d(arr,lo,hi,nb){
+  var H=new Float32Array(nb),dx=(hi-lo)/nb;
+  for(var i=0;i<arr.length;i++){var b=Math.floor((arr[i]-lo)/dx);if(b>=0&&b<nb)H[b]++;}
+  return H;
+}
+function h2d(ax,ay,lox,hix,loy,hiy,nb){
+  var H=new Float32Array(nb*nb),dx=(hix-lox)/nb,dy=(hiy-loy)/nb;
+  for(var i=0;i<ax.length;i++){
+    var bx=Math.floor((ax[i]-lox)/dx),by=Math.floor((ay[i]-loy)/dy);
+    if(bx>=0&&bx<nb&&by>=0&&by<nb)H[by*nb+bx]++;
+  }
+  return H;
+}
+
+function renderCorner(){
+  if(!S)return;
+  var cv=document.getElementById('cornercv');
+  var dpr=window.devicePixelRatio||1;
+  var ctx=cv.getContext('2d');
+  var W=cv.width/dpr, H=cv.height/dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,W,H);
+
+  var NDIM=6;
+  var axN=['m1','m2','χ1','χ2','z1','z2'];
+  var lo=[5,5,blobs.C.x-0.5,blobs.C.x-0.5,blobs.Z.x-0.5,blobs.Z.x-0.5];
+  var hi=[90,90,blobs.C.y+0.5,blobs.C.y+0.5,blobs.Z.y+0.5,blobs.Z.y+0.5];
+  // use fixed sensible ranges
+  lo=[5,5,-0.1,-0.1,-1,-1]; hi=[90,90,1,1,1,1];
+  var arrs=[S.m1,S.m2,S.c1,S.c2,S.z1,S.z2];
+
+  var lH=Math.max(9,Math.round(W*0.024));
+  var tH=Math.max(6,Math.round(W*0.013));
+  var ML=lH*2.2, MR=6, MT=6, MB=lH*2.2;
+  var cw=(W-ML-MR)/NDIM, ch=(H-MT-MB)/NDIM;
+  var pad=2, nb=44;
+
+  for(var row=0;row<NDIM;row++){
+    for(var col=0;col<=row;col++){
+      var x0=ML+col*cw+pad, y0=MT+row*ch+pad;
+      var cws=cw-2*pad, chs=ch-2*pad;
+      ctx.fillStyle='#181818'; ctx.fillRect(x0,y0,cws,chs);
+      if(row===col){
+        var H1=h1d(arrs[row],lo[row],hi[row],nb);
+        var hm=0; for(var k=0;k<nb;k++)if(H1[k]>hm)hm=H1[k];
+        if(hm>0){var bw=cws/nb;for(var k=0;k<nb;k++){var t=H1[k]/hm;ctx.fillStyle=viridis(0.35+0.65*t);ctx.fillRect(x0+k*bw,y0+chs-t*chs,bw+0.5,t*chs);}}
+      } else {
+        var H2=h2d(arrs[col],arrs[row],lo[col],hi[col],lo[row],hi[row],nb);
+        var hm=0; for(var k=0;k<H2.length;k++)if(H2[k]>hm)hm=H2[k];
+        if(hm>0){var pw=cws/nb,ph=chs/nb;for(var iy=0;iy<nb;iy++){for(var ix=0;ix<nb;ix++){var v=H2[iy*nb+ix]/hm;if(v<0.004)continue;ctx.fillStyle=viridis(Math.pow(v,0.4));ctx.fillRect(x0+ix*pw,y0+chs-(iy+1)*ph,pw+0.5,ph+0.5);}}}
+      }
+      ctx.strokeStyle='#2a2a2a'; ctx.lineWidth=0.5; ctx.strokeRect(x0,y0,cws,chs);
+      if(col===0&&row>0){ctx.fillStyle='#444';ctx.font=tH+'px monospace';ctx.textAlign='right';ctx.fillText(hi[row].toFixed(1),x0-2,y0+7);ctx.fillText(lo[row].toFixed(1),x0-2,y0+chs);}
+      if(row===NDIM-1){ctx.fillStyle='#444';ctx.font=tH+'px monospace';ctx.textAlign='left';ctx.fillText(lo[col].toFixed(1),x0,y0+chs+tH+2);ctx.textAlign='right';ctx.fillText(hi[col].toFixed(1),x0+cws,y0+chs+tH+2);}
+    }
+  }
+  ctx.fillStyle='#777'; ctx.font=lH+'px monospace';
+  for(var i=0;i<NDIM;i++){
+    ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.translate(ML-lH,MT+(i+0.5)*ch);ctx.rotate(-Math.PI/2);ctx.fillText(axN[i],0,0);ctx.restore();
+    ctx.textAlign='center'; ctx.fillText(axN[i],ML+(i+0.5)*cw,MT+NDIM*ch+lH*1.2);
+  }
+}
+
+// ---- sliders ----
+var sliders=[
+  ['sigA',1],['sigB',1],['sigCA',2],['sigCB',2],['sigZA',2],['sigZB',2],['Nk',0]
+];
+sliders.forEach(function(s){
+  var el=document.getElementById(s[0]);
+  function upd(){document.getElementById('v_'+s[0]).textContent=parseFloat(el.value).toFixed(s[1]);}
+  el.addEventListener('input',function(){upd();scheduleUpdate();});
+  upd();
+});
+
+// ---- throttle ----
+var _raf=null;
+function scheduleUpdate(){
+  if(_raf)return;
+  _raf=requestAnimationFrame(function(){_raf=null;doUpdate();});
+}
+function doUpdate(){
+  generateSamples();
+  blobDefs.forEach(drawBlob);
+  renderCorner();
+  document.getElementById('info').innerHTML=
+    'N='+S.N.toLocaleString()+'  swap: '+(S.fswap/S.N*100).toFixed(1)+'%<br>'+
+    'μ_mA='+blobs.M.x.toFixed(1)+'  μ_mB='+blobs.M.y.toFixed(1)+'  '+
+    'μ_χA='+blobs.C.x.toFixed(2)+'  μ_χB='+blobs.C.y.toFixed(2);
+}
+
+// ---- sizing: set canvas buffer size ONCE, never change again ----
+function initSizes(){
+  var dpr=window.devicePixelRatio||1;
+  var sidebar=document.getElementById('sidebar');
+  var sw=sidebar.clientWidth||270;
+  var bsz=Math.floor((sw-22)/2);  // two per row
+  bsz=Math.max(bsz,100);
+  // third blob is full width
+  blobDefs.forEach(function(def,i){
+    var cv=document.getElementById(def.id);
+    var sz=i<2?bsz:Math.min(sw-12,240);
+    cv.width=Math.round(sz*dpr);
+    cv.height=Math.round(sz*dpr);
+    cv.style.width=sz+'px';
+    cv.style.height=sz+'px';
+  });
+  var cw=document.getElementById('corner-wrap');
+  var csz=Math.max(300,Math.min(cw.clientWidth-12,window.innerHeight-40,680));
+  var ccv=document.getElementById('cornercv');
+  ccv.width=Math.round(csz*dpr);
+  ccv.height=Math.round(csz*dpr);
+  ccv.style.width=csz+'px';
+  ccv.style.height=csz+'px';
+}
+
+// Only resize canvases when window actually changes size, not on every frame
+var _resizeTid=null;
+window.addEventListener('resize',function(){
+  clearTimeout(_resizeTid);
+  _resizeTid=setTimeout(function(){initSizes();doUpdate();},120);
+});
+
+initSizes();
+doUpdate();
+</script>
+</body></html>
