@@ -2,106 +2,204 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>GW label swap</title>
+<script>
+window.MathJax={
+  tex:{inlineMath:[['$','$']]},
+  svg:{fontCache:'none'},
+  startup:{ready(){MathJax.startup.defaultReady();mathReady=true;if(initDone&&!_raf)scheduleUpdate();}}
+};
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#111;color:#ddd;font-family:monospace;font-size:12px;padding:8px;max-width:1400px;margin:0 auto}
-h2{font-size:13px;color:#fc6;margin-bottom:6px}
-#layout{display:grid;grid-template-columns:minmax(260px,300px) 1fr;gap:8px;align-items:start}
-.box{background:#1e1e1e;border:1px solid #333;border-radius:4px;padding:6px;margin-bottom:6px}
-.bt{color:#6cf;font-weight:bold;font-size:11px;margin-bottom:4px}
-details summary{cursor:pointer;color:#888;font-size:10px;list-style:none;padding:2px 0}
-details summary::-webkit-details-marker{display:none}
-details summary::after{content:'▸ edit params';color:#555;margin-left:4px}
-details[open] summary::after{content:'▾ hide'}
-.row{display:flex;align-items:center;gap:4px;margin-bottom:2px}
-.row label{min-width:86px;color:#aaa;font-size:10px}
-.row input[type=range]{flex:1;height:14px}
-.row .val{width:36px;text-align:right;color:#ff9;font-size:10px}
-.sep{border-top:1px solid #2a2a2a;margin:4px 0}
-#blobgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.cv-wrap{display:flex;flex-direction:column;align-items:center}
-.cv-wrap:last-child{grid-column:1/-1}
-canvas.blob{background:#0d0d0d;border:1px solid #333;border-radius:4px;cursor:crosshair;touch-action:none;display:block;width:100%;height:auto}
-.clbl{color:#666;font-size:9px;margin-top:2px;text-align:center;line-height:1.3}
-#corner-wrap{background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:4px;display:flex;justify-content:center}
-#cornercv{display:block;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:4px}
-#info{color:#9d9;font-size:10px;line-height:1.6;margin-top:4px}
-@media(max-width:860px){#layout{grid-template-columns:1fr}}
+body{background:#111;color:#ddd;font-family:monospace;font-size:12px;padding:8px;max-width:1100px;margin:0 auto}
+h2{font-size:14px;color:#fc6;margin-bottom:5px}
+
+/* ── Model params top bar ── */
+#model-bar{background:#181818;border:1px solid #2a2a2a;border-radius:4px;margin-bottom:6px}
+#model-bar summary{padding:5px 10px;cursor:pointer;color:#6cf;font-weight:bold;font-size:11px;
+  list-style:none;display:flex;align-items:center;justify-content:space-between}
+#model-bar summary::-webkit-details-marker{display:none}
+#model-bar summary::after{content:'▸ edit';color:#555;font-size:10px}
+#model-bar[open] summary::after{content:'▾ hide'}
+.params-grid{display:flex;flex-wrap:wrap;gap:10px 18px;padding:4px 12px 8px}
+.param-group{min-width:120px}
+.pgt{color:#777;font-size:9px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.pr{display:flex;align-items:center;gap:4px;margin-bottom:2px}
+.pr label{min-width:40px;color:#aaa;font-size:10px}
+.pr input[type=range]{width:90px;height:13px}
+.pr .val{width:36px;text-align:right;color:#ff9;font-size:10px}
+.sep{border-top:1px solid #222;margin:3px 0}
+
+/* ── Controls row ── */
+#ctrl-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+#info{color:#9d9;font-size:10px;flex:1;line-height:1.5}
+button{background:#2a3a4a;color:#adf;border:1px solid #4a6a8a;padding:3px 9px;border-radius:3px;
+  cursor:pointer;font-size:10px;font-family:monospace;-webkit-appearance:none}
+button.active{background:#1a4a2a;border-color:#4a9a6a;color:#afc}
+
+/* ── Main 3-column grid (blob canvases + pair plots, always shown) ── */
+#grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.pair-col{display:flex;flex-direction:column;gap:4px;min-width:0}
+canvas.blob{display:block;width:100%;background:#0d0d0d;border:1px solid #333;
+  border-radius:4px;cursor:crosshair;touch-action:none}
+.clbl{color:#999;font-size:12px;text-align:center;line-height:1.4;padding:2px 0}
+canvas.pairplot{display:block;width:100%;background:#0a0a0a;border:1px solid #333;border-radius:4px}
+
+/* ── Full corner (toggle) ── */
+#corner-full{display:none;margin-top:6px;text-align:center}
+#corner-full canvas{display:inline-block;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:4px}
+
+@media(max-width:640px){#grid{grid-template-columns:1fr}}
 </style>
 </head><body>
-<h2>GW label-swap: drag blobs → see folding in corner plot</h2>
-<div id="layout">
-<div id="sidebar">
-  <div class="box">
-    <div class="bt">Blob positions — drag to move</div>
-    <div id="blobgrid">
-      <div class="cv-wrap"><canvas id="cvM" class="blob"></canvas><div class="clbl">m_A vs m_B</div></div>
-      <div class="cv-wrap"><canvas id="cvC" class="blob"></canvas><div class="clbl">χ_A vs χ_B</div></div>
-      <div class="cv-wrap"><canvas id="cvZ" class="blob"></canvas><div class="clbl">cos θ_A vs cos θ_B</div></div>
+
+<h2>GW label-swap — drag blobs → see folding in the posteriors</h2>
+
+<!-- ── Model params ── -->
+<details id="model-bar">
+  <summary>Model params</summary>
+  <div class="params-grid">
+    <div class="param-group">
+      <div class="pgt">Mass &sigma;</div>
+      <div class="pr"><label>&sigma;<sub>mA</sub></label><input type="range" id="sigA" min="0.5" max="20" step="0.5" value="13"><span class="val" id="v_sigA">13.0</span></div>
+      <div class="pr"><label>&sigma;<sub>mB</sub></label><input type="range" id="sigB" min="0.5" max="30" step="0.5" value="26"><span class="val" id="v_sigB">26.0</span></div>
+    </div>
+    <div class="param-group">
+      <div class="pgt">Spin &sigma;</div>
+      <div class="pr"><label>&sigma;<sub>&chi;A</sub></label><input type="range" id="sigCA" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigCA">0.08</span></div>
+      <div class="pr"><label>&sigma;<sub>&chi;B</sub></label><input type="range" id="sigCB" min="0.01" max="0.4" step="0.01" value="0.16"><span class="val" id="v_sigCB">0.16</span></div>
+    </div>
+    <div class="param-group">
+      <div class="pgt">Cos tilt &sigma;</div>
+      <div class="pr"><label>&sigma;<sub>zA</sub></label><input type="range" id="sigZA" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigZA">0.08</span></div>
+      <div class="pr"><label>&sigma;<sub>zB</sub></label><input type="range" id="sigZB" min="0.01" max="0.4" step="0.01" value="0.16"><span class="val" id="v_sigZB">0.16</span></div>
+    </div>
+    <div class="param-group">
+      <div class="pgt">Samples</div>
+      <div class="pr"><label>N (k)</label><input type="range" id="Nk" min="5" max="100" step="5" value="50"><span class="val" id="v_Nk">50</span></div>
     </div>
   </div>
-  <div class="box">
-    <div class="bt">Model params</div>
-    <details id="pd">
-      <summary></summary>
-      <div style="margin-top:6px">
-        <div style="color:#888;font-size:9px;margin-bottom:2px">Mass</div>
-        <div class="row"><label>σ_mA</label><input type="range" id="sigA" min="0.5" max="20" step="0.5" value="5"><span class="val" id="v_sigA">5.0</span></div>
-        <div class="row"><label>σ_mB</label><input type="range" id="sigB" min="0.5" max="20" step="0.5" value="5"><span class="val" id="v_sigB">5.0</span></div>
-        <div class="sep"></div>
-        <div style="color:#888;font-size:9px;margin-bottom:2px">Spin magnitude</div>
-        <div class="row"><label>σ_χA</label><input type="range" id="sigCA" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigCA">0.08</span></div>
-        <div class="row"><label>σ_χB</label><input type="range" id="sigCB" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigCB">0.08</span></div>
-        <div class="sep"></div>
-        <div style="color:#888;font-size:9px;margin-bottom:2px">Cos tilt</div>
-        <div class="row"><label>σ_zA</label><input type="range" id="sigZA" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigZA">0.08</span></div>
-        <div class="row"><label>σ_zB</label><input type="range" id="sigZB" min="0.01" max="0.4" step="0.01" value="0.08"><span class="val" id="v_sigZB">0.08</span></div>
-        <div class="sep"></div>
-        <div style="color:#888;font-size:9px;margin-bottom:2px">Samples</div>
-        <div class="row"><label>N (k)</label><input type="range" id="Nk" min="5" max="100" step="5" value="30"><span class="val" id="v_Nk">30</span></div>
-      </div>
-    </details>
-    <div id="info">–</div>
+</details>
+
+<!-- ── Controls row ── -->
+<div id="ctrl-row">
+  <div id="info">–</div>
+  <button id="viewBtn" onclick="toggleView()">full corner</button>
+</div>
+
+<!-- ── 3-column grid: blobs on top, pair plots below ── -->
+<div id="grid">
+  <div class="pair-col">
+    <canvas id="cvM" class="blob"></canvas>
+    <div class="clbl">$m_A$ vs $m_B$</div>
+    <canvas id="cv_m" class="pairplot"></canvas>
+  </div>
+  <div class="pair-col">
+    <canvas id="cvC" class="blob"></canvas>
+    <div class="clbl">$\chi_A$ vs $\chi_B$</div>
+    <canvas id="cv_chi" class="pairplot"></canvas>
+  </div>
+  <div class="pair-col">
+    <canvas id="cvZ" class="blob"></canvas>
+    <div class="clbl">$\cos\theta_A$ vs $\cos\theta_B$</div>
+    <canvas id="cv_z" class="pairplot"></canvas>
   </div>
 </div>
-<div id="main">
-  <div id="corner-wrap"><canvas id="cornercv"></canvas></div>
+
+<!-- ── Full 6×6 corner (hidden by default) ── -->
+<div id="corner-full">
+  <canvas id="cornercv"></canvas>
 </div>
-</div>
+
 <script>
-// ---- blob state (data coords) ----
-var blobs={M:{x:35,y:20},C:{x:0.3,y:0.6},Z:{x:0.8,y:-0.2}};
+// ──────────────────────────────────────────────
+// MathJax → canvas helpers
+// ──────────────────────────────────────────────
+var mathReady=false, mathImgCache={};
+function getMathImg(tex,hpx,color){
+  color=color||'#cccccc';
+  var key=tex+'|'+hpx+'|'+color;
+  if(mathImgCache[key])return mathImgCache[key];
+  if(!mathReady||!window.MathJax||!MathJax.tex2svg)return null;
+  try{
+    var wrapper=MathJax.tex2svg(tex,{display:false});
+    var svg=wrapper.querySelector('svg');
+    if(!svg)return null;
+    var vb=svg.viewBox?svg.viewBox.baseVal:null;
+    var aspect=(vb&&vb.height>0)?vb.width/vb.height:3;
+    var wpx=Math.max(1,Math.round(hpx*aspect));
+    svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    svg.setAttribute('width',wpx+'px');
+    svg.setAttribute('height',hpx+'px');
+    var s=new XMLSerializer().serializeToString(svg);
+    s=s.replace(/currentColor/g,color);
+    var img=new Image();
+    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s);
+    var entry={img:img,w:wpx,h:hpx,ready:false};
+    img.onload=function(){entry.ready=true;if(initDone&&!_raf)scheduleUpdate();};
+    mathImgCache[key]=entry;
+    return entry;
+  }catch(e){return null;}
+}
+function drawMath(ctx,tex,cx,cy,hpx,rotate,color){
+  var m=getMathImg(tex,hpx,color);
+  ctx.save();
+  ctx.translate(cx,cy);
+  if(rotate)ctx.rotate(rotate);
+  if(!m||!m.ready){
+    ctx.font='bold '+Math.round(hpx*.85)+'px sans-serif';
+    ctx.fillStyle=color||'#ccc';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(tex.replace(/[\\{}]/g,'').replace(/mathrm|cos/g,''),0,0);
+  }else{
+    ctx.drawImage(m.img,-m.w/2,-m.h/2,m.w,m.h);
+  }
+  ctx.restore();
+}
+
+// ──────────────────────────────────────────────
+// Blob state
+// ──────────────────────────────────────────────
+var blobs={M:{x:35,y:20},C:{x:0.30,y:0.60},Z:{x:0.8,y:-0.2}};
 var blobDefs=[
-  {id:'cvM',key:'M',xlo:5,xhi:90,ylo:5,yhi:90,xl:'m_A',yl:'m_B',diag:true},
-  {id:'cvC',key:'C',xlo:0,xhi:1,ylo:0,yhi:1,xl:'χ_A',yl:'χ_B',diag:false},
-  {id:'cvZ',key:'Z',xlo:-1,xhi:1,ylo:-1,yhi:1,xl:'zA',yl:'zB',diag:false},
+  {id:'cvM',key:'M',xlo:5,xhi:90,ylo:5,yhi:90,diag:true,
+   xl:'m_A',yl:'m_B'},
+  {id:'cvC',key:'C',xlo:0,xhi:1,ylo:0,yhi:1,diag:false,
+   xl:'\\chi_A',yl:'\\chi_B'},
+  {id:'cvZ',key:'Z',xlo:-1,xhi:1,ylo:-1,yhi:1,diag:false,
+   xl:'\\cos\\theta_A',yl:'\\cos\\theta_B'},
+];
+var pairDefs=[
+  {id:'cv_m',  lox:5,   hix:90,  loy:5,   hiy:90,  xl:'m_1',           yl:'m_2',           axX:null,axY:null},
+  {id:'cv_chi',lox:-0.05,hix:1.05,loy:-0.05,hiy:1.05,xl:'\\chi_1',      yl:'\\chi_2',       axX:null,axY:null},
+  {id:'cv_z',  lox:-1,  hix:1,   loy:-1,  hiy:1,   xl:'\\cos\\theta_1',yl:'\\cos\\theta_2',axX:null,axY:null},
 ];
 
 function getSig(key){
-  if(key==='M')return{sx:getV('sigA'),sy:getV('sigB')};
-  if(key==='C')return{sx:getV('sigCA'),sy:getV('sigCB')};
-  return{sx:getV('sigZA'),sy:getV('sigZB')};
+  if(key==='M')return{sx:gv('sigA'),sy:gv('sigB')};
+  if(key==='C')return{sx:gv('sigCA'),sy:gv('sigCB')};
+  return{sx:gv('sigZA'),sy:gv('sigZB')};
 }
-function getV(id){return parseFloat(document.getElementById(id).value);}
-function getI(id){return parseInt(document.getElementById(id).value);}
+function gv(id){return parseFloat(document.getElementById(id).value);}
+function gi(id){return parseInt(document.getElementById(id).value);}
 
-// ---- RNG ----
+// ──────────────────────────────────────────────
+// RNG + samples
+// ──────────────────────────────────────────────
 function randn(){var u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
 
-// ---- samples ----
 var S=null;
 function generateSamples(){
-  var N=getI('Nk')*1000;
+  var N=gi('Nk')*1000;
+  var sA=gv('sigA'),sB=gv('sigB'),sCA=gv('sigCA'),sCB=gv('sigCB'),sZA=gv('sigZA'),sZB=gv('sigZB');
   var mA=new Float32Array(N),mB=new Float32Array(N);
   var cA=new Float32Array(N),cB=new Float32Array(N);
   var zA=new Float32Array(N),zB=new Float32Array(N);
-  var sigA=getV('sigA'),sigB=getV('sigB');
-  var sigCA=getV('sigCA'),sigCB=getV('sigCB');
-  var sigZA=getV('sigZA'),sigZB=getV('sigZB');
   for(var i=0;i<N;i++){
-    mA[i]=blobs.M.x+sigA*randn(); mB[i]=blobs.M.y+sigB*randn();
-    cA[i]=blobs.C.x+sigCA*randn(); cB[i]=blobs.C.y+sigCB*randn();
-    zA[i]=blobs.Z.x+sigZA*randn(); zB[i]=blobs.Z.y+sigZB*randn();
+    mA[i]=blobs.M.x+sA*randn(); mB[i]=blobs.M.y+sB*randn();
+    cA[i]=blobs.C.x+sCA*randn(); cB[i]=blobs.C.y+sCB*randn();
+    zA[i]=blobs.Z.x+sZA*randn(); zB[i]=blobs.Z.y+sZB*randn();
   }
   var m1=new Float32Array(N),m2=new Float32Array(N);
   var c1=new Float32Array(N),c2=new Float32Array(N);
@@ -109,12 +207,17 @@ function generateSamples(){
   var fswap=0;
   for(var i=0;i<N;i++){
     if(mA[i]>=mB[i]){m1[i]=mA[i];m2[i]=mB[i];c1[i]=cA[i];c2[i]=cB[i];z1[i]=zA[i];z2[i]=zB[i];}
-    else{m1[i]=mB[i];m2[i]=mA[i];c1[i]=cB[i];c2[i]=cA[i];z1[i]=zB[i];z2[i]=zA[i];fswap++;}
+    else           {m1[i]=mB[i];m2[i]=mA[i];c1[i]=cB[i];c2[i]=cA[i];z1[i]=zB[i];z2[i]=zA[i];fswap++;}
   }
   S={N,m1,m2,c1,c2,z1,z2,fswap};
+  pairDefs[0].axX=S.m1; pairDefs[0].axY=S.m2;
+  pairDefs[1].axX=S.c1; pairDefs[1].axY=S.c2;
+  pairDefs[2].axX=S.z1; pairDefs[2].axY=S.z2;
 }
 
-// ---- viridis ----
+// ──────────────────────────────────────────────
+// Viridis
+// ──────────────────────────────────────────────
 function viridis(t){
   t=t<0?0:t>1?1:t;
   var st=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
@@ -123,83 +226,62 @@ function viridis(t){
   return'rgb('+Math.round(a[0]+(b[0]-a[0])*f)+','+Math.round(a[1]+(b[1]-a[1])*f)+','+Math.round(a[2]+(b[2]-a[2])*f)+')';
 }
 
-// ---- blob canvas drawing ----
-// Canvas logical size (CSS px) — set once, never changed after init
-var BSIZ=120; // will be updated in resize
-
+// ──────────────────────────────────────────────
+// Blob canvas draw
+// ──────────────────────────────────────────────
 function d2c(cv,dx,dy,def){
-  // data coords -> canvas CSS px coords
-  var W=cv.width/window.devicePixelRatio, H=cv.height/window.devicePixelRatio;
-  var pad=16;
-  return{
-    px:pad+(dx-def.xlo)/(def.xhi-def.xlo)*(W-2*pad),
-    py:(H-pad)-(dy-def.ylo)/(def.yhi-def.ylo)*(H-2*pad)
-  };
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr,p=16;
+  return{px:p+(dx-def.xlo)/(def.xhi-def.xlo)*(W-2*p),
+         py:(H-p)-(dy-def.ylo)/(def.yhi-def.ylo)*(H-2*p)};
 }
 function c2d(cv,px,py,def){
-  var W=cv.width/window.devicePixelRatio, H=cv.height/window.devicePixelRatio;
-  var pad=16;
-  return{
-    x:def.xlo+(px-pad)/(W-2*pad)*(def.xhi-def.xlo),
-    y:def.ylo+((H-pad)-py)/(H-2*pad)*(def.yhi-def.ylo)
-  };
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr,p=16;
+  return{x:def.xlo+(px-p)/(W-2*p)*(def.xhi-def.xlo),
+         y:def.ylo+((H-p)-py)/(H-2*p)*(def.yhi-def.ylo)};
 }
 function clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v;}
 
 function drawBlob(def){
   var cv=document.getElementById(def.id);
-  var dpr=window.devicePixelRatio||1;
-  var W=cv.width/dpr, H=cv.height/dpr;
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr;
   var ctx=cv.getContext('2d');
-  // always reset transform then scale by DPR
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#0d0d0d'; ctx.fillRect(0,0,W,H);
-  var pad=16;
-  // grid
-  ctx.strokeStyle='#222'; ctx.lineWidth=0.5;
+  ctx.fillStyle='#0d0d0d';ctx.fillRect(0,0,W,H);
+  var p=16;
+  ctx.strokeStyle='#1e1e1e';ctx.lineWidth=0.5;
   for(var k=0;k<=4;k++){
-    var gx=pad+k/4*(W-2*pad), gy=pad+k/4*(H-2*pad);
-    ctx.beginPath();ctx.moveTo(gx,pad);ctx.lineTo(gx,H-pad);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(pad,gy);ctx.lineTo(W-pad,gy);ctx.stroke();
+    var gx=p+k/4*(W-2*p),gy=p+k/4*(H-2*p);
+    ctx.beginPath();ctx.moveTo(gx,p);ctx.lineTo(gx,H-p);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p,gy);ctx.lineTo(W-p,gy);ctx.stroke();
   }
-  // diagonal for mass
   if(def.diag){
-    ctx.strokeStyle='#2a3a2a'; ctx.lineWidth=0.8; ctx.setLineDash([3,3]);
-    ctx.beginPath();ctx.moveTo(pad,H-pad);ctx.lineTo(W-pad,pad);ctx.stroke();
+    ctx.strokeStyle='#1e2e1e';ctx.lineWidth=0.8;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(p,H-p);ctx.lineTo(W-p,p);ctx.stroke();
     ctx.setLineDash([]);
   }
-  // axis labels
-  ctx.fillStyle='#555'; ctx.font='8px monospace'; ctx.textAlign='center';
-  ctx.fillText(def.xl, W/2, H-3);
-  ctx.save(); ctx.translate(9,H/2); ctx.rotate(-Math.PI/2); ctx.fillText(def.yl,0,0); ctx.restore();
-  // ellipse
-  var blob=blobs[def.key];
-  var sig=getSig(def.key);
+  var blob=blobs[def.key],sig=getSig(def.key);
   var cen=d2c(cv,blob.x,blob.y,def);
-  var sx=sig.sx/(def.xhi-def.xlo)*(W-2*pad);
-  var sy=sig.sy/(def.yhi-def.ylo)*(H-2*pad);
-  ctx.fillStyle='rgba(40,90,140,0.12)'; ctx.strokeStyle='#4a8aaa'; ctx.lineWidth=1.2;
-  ctx.beginPath(); ctx.ellipse(cen.px,cen.py,sx*2,sy*2,0,0,2*Math.PI); ctx.fill(); ctx.stroke();
-  ctx.fillStyle='rgba(40,90,140,0.10)'; ctx.strokeStyle='#6aaccc'; ctx.lineWidth=0.8;
-  ctx.beginPath(); ctx.ellipse(cen.px,cen.py,sx,sy,0,0,2*Math.PI); ctx.fill(); ctx.stroke();
-  ctx.fillStyle='#fc6';
-  ctx.beginPath(); ctx.arc(cen.px,cen.py,3,0,2*Math.PI); ctx.fill();
+  var sx=sig.sx/(def.xhi-def.xlo)*(W-2*p);
+  var sy=sig.sy/(def.yhi-def.ylo)*(H-2*p);
+  ctx.fillStyle='rgba(40,90,140,0.12)';ctx.strokeStyle='#4a8aaa';ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.ellipse(cen.px,cen.py,sx*2,sy*2,0,0,2*Math.PI);ctx.fill();ctx.stroke();
+  ctx.fillStyle='rgba(40,90,140,0.10)';ctx.strokeStyle='#6aaccc';ctx.lineWidth=0.8;
+  ctx.beginPath();ctx.ellipse(cen.px,cen.py,sx,sy,0,0,2*Math.PI);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#fc6';ctx.beginPath();ctx.arc(cen.px,cen.py,4,0,2*Math.PI);ctx.fill();
+  // axis labels
+  var lH=Math.max(10,Math.round(W*0.068));
+  drawMath(ctx,def.xl,W/2,H-3,lH,0,'#555');
+  drawMath(ctx,def.yl,9,H/2,lH,-Math.PI/2,'#555');
 }
 
-// ---- drag ----
+// ── Drag ──
 blobDefs.forEach(function(def){
-  var cv=document.getElementById(def.id);
-  var dragging=false;
+  var cv=document.getElementById(def.id),dragging=false;
   function move(ex,ey){
-    var r=cv.getBoundingClientRect();
-    var dpr=window.devicePixelRatio||1;
-    // getBoundingClientRect gives CSS px, c2d works in CSS px (width/dpr)
-    var d=c2d(cv,ex-r.left,ey-r.top,def);
+    var r=cv.getBoundingClientRect(),d=c2d(cv,ex-r.left,ey-r.top,def);
     blobs[def.key].x=clamp(d.x,def.xlo,def.xhi);
     blobs[def.key].y=clamp(d.y,def.ylo,def.yhi);
-    drawBlob(def);
-    scheduleUpdate();
+    drawBlob(def);scheduleUpdate();
   }
   cv.addEventListener('mousedown',function(e){dragging=true;move(e.clientX,e.clientY);e.preventDefault();});
   window.addEventListener('mousemove',function(e){if(dragging)move(e.clientX,e.clientY);});
@@ -209,7 +291,9 @@ blobDefs.forEach(function(def){
   cv.addEventListener('touchend',function(){dragging=false;});
 });
 
-// ---- corner plot ----
+// ──────────────────────────────────────────────
+// Histograms
+// ──────────────────────────────────────────────
 function h1d(arr,lo,hi,nb){
   var H=new Float32Array(nb),dx=(hi-lo)/nb;
   for(var i=0;i<arr.length;i++){var b=Math.floor((arr[i]-lo)/dx);if(b>=0&&b<nb)H[b]++;}
@@ -224,116 +308,174 @@ function h2d(ax,ay,lox,hix,loy,hiy,nb){
   return H;
 }
 
+// ──────────────────────────────────────────────
+// Pair plot rendering (one canvas per pair)
+// ──────────────────────────────────────────────
+function renderPairCanvas(pd){
+  if(!pd.axX)return;
+  var cv=document.getElementById(pd.id);
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr;
+  var ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,W,H);
+
+  var lH=Math.max(14,Math.round(W*0.075));   // big labels
+  var pad=Math.round(lH*1.9);
+  var pw=W-2*pad,ph=H-2*pad;
+  var nb=52;
+
+  ctx.fillStyle='#131313';ctx.fillRect(pad,pad,pw,ph);
+
+  var H2=h2d(pd.axX,pd.axY,pd.lox,pd.hix,pd.loy,pd.hiy,nb);
+  var hm=0;for(var k=0;k<H2.length;k++)if(H2[k]>hm)hm=H2[k];
+  if(hm>0){
+    var bw=pw/nb,bh=ph/nb;
+    for(var iy=0;iy<nb;iy++){for(var ix=0;ix<nb;ix++){
+      var v=H2[iy*nb+ix]/hm;if(v<0.004)continue;
+      ctx.fillStyle=viridis(Math.pow(v,0.38));
+      ctx.fillRect(pad+ix*bw,pad+ph-(iy+1)*bh,bw+0.5,bh+0.5);
+    }}
+  }
+  ctx.strokeStyle='#2a2a2a';ctx.lineWidth=0.8;ctx.strokeRect(pad,pad,pw,ph);
+
+  // Tick labels
+  var tH=Math.max(7,Math.round(W*0.034));
+  var loX=pd.lox,hiX=pd.hix,loY=pd.loy,hiY=pd.hiy;
+  var dec=function(v){return Math.abs(v)>=10?0:Math.abs(v)>=1?1:2;};
+  ctx.fillStyle='#555';ctx.font=tH+'px monospace';
+  ctx.textAlign='left'; ctx.fillText(loX.toFixed(dec(loX)),pad,pad+ph+tH+3);
+  ctx.textAlign='right';ctx.fillText(hiX.toFixed(dec(hiX)),pad+pw,pad+ph+tH+3);
+  ctx.textAlign='right';ctx.fillText(hiY.toFixed(dec(hiY)),pad-3,pad+tH);
+  ctx.textAlign='right';ctx.fillText(loY.toFixed(dec(loY)),pad-3,pad+ph);
+
+  // Big axis labels (MathJax)
+  drawMath(ctx,pd.xl,W/2,pad+ph+lH*1.25,lH,0,'#aaa');
+  drawMath(ctx,pd.yl,lH*0.65,H/2,lH,-Math.PI/2,'#aaa');
+}
+
+// ──────────────────────────────────────────────
+// Full 6×6 corner
+// ──────────────────────────────────────────────
 function renderCorner(){
   if(!S)return;
   var cv=document.getElementById('cornercv');
-  var dpr=window.devicePixelRatio||1;
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr;
   var ctx=cv.getContext('2d');
-  var W=cv.width/dpr, H=cv.height/dpr;
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,W,H);
-
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,W,H);
   var NDIM=6;
-  var axN=['m1','m2','χ1','χ2','z1','z2'];
-  var lo=[5,5,blobs.C.x-0.5,blobs.C.x-0.5,blobs.Z.x-0.5,blobs.Z.x-0.5];
-  var hi=[90,90,blobs.C.y+0.5,blobs.C.y+0.5,blobs.Z.y+0.5,blobs.Z.y+0.5];
-  // use fixed sensible ranges
-  lo=[5,5,-0.1,-0.1,-1,-1]; hi=[90,90,1,1,1,1];
+  var axN=['m_1','m_2','\\chi_1','\\chi_2','z_1','z_2'];
+  var lo=[5,5,-0.05,-0.05,-1,-1],hi=[90,90,1.05,1.05,1,1];
   var arrs=[S.m1,S.m2,S.c1,S.c2,S.z1,S.z2];
-
-  var lH=Math.max(9,Math.round(W*0.024));
-  var tH=Math.max(6,Math.round(W*0.013));
-  var ML=lH*2.2, MR=6, MT=6, MB=lH*2.2;
-  var cw=(W-ML-MR)/NDIM, ch=(H-MT-MB)/NDIM;
-  var pad=2, nb=44;
-
+  var lH=Math.max(9,Math.round(W*0.022));
+  var tH=Math.max(6,Math.round(W*0.012));
+  var ML=lH*2.4,MR=6,MT=6,MB=lH*2.4;
+  var cw=(W-ML-MR)/NDIM,ch=(H-MT-MB)/NDIM;
+  var pad=2,nb=44;
   for(var row=0;row<NDIM;row++){
     for(var col=0;col<=row;col++){
-      var x0=ML+col*cw+pad, y0=MT+row*ch+pad;
-      var cws=cw-2*pad, chs=ch-2*pad;
-      ctx.fillStyle='#181818'; ctx.fillRect(x0,y0,cws,chs);
+      var x0=ML+col*cw+pad,y0=MT+row*ch+pad,cws=cw-2*pad,chs=ch-2*pad;
+      ctx.fillStyle='#181818';ctx.fillRect(x0,y0,cws,chs);
       if(row===col){
         var H1=h1d(arrs[row],lo[row],hi[row],nb);
-        var hm=0; for(var k=0;k<nb;k++)if(H1[k]>hm)hm=H1[k];
+        var hm=0;for(var k=0;k<nb;k++)if(H1[k]>hm)hm=H1[k];
         if(hm>0){var bw=cws/nb;for(var k=0;k<nb;k++){var t=H1[k]/hm;ctx.fillStyle=viridis(0.35+0.65*t);ctx.fillRect(x0+k*bw,y0+chs-t*chs,bw+0.5,t*chs);}}
-      } else {
+      }else{
         var H2=h2d(arrs[col],arrs[row],lo[col],hi[col],lo[row],hi[row],nb);
-        var hm=0; for(var k=0;k<H2.length;k++)if(H2[k]>hm)hm=H2[k];
-        if(hm>0){var pw=cws/nb,ph=chs/nb;for(var iy=0;iy<nb;iy++){for(var ix=0;ix<nb;ix++){var v=H2[iy*nb+ix]/hm;if(v<0.004)continue;ctx.fillStyle=viridis(Math.pow(v,0.4));ctx.fillRect(x0+ix*pw,y0+chs-(iy+1)*ph,pw+0.5,ph+0.5);}}}
+        var hm=0;for(var k=0;k<H2.length;k++)if(H2[k]>hm)hm=H2[k];
+        if(hm>0){var bw2=cws/nb,bh2=chs/nb;for(var iy=0;iy<nb;iy++){for(var ix=0;ix<nb;ix++){var v=H2[iy*nb+ix]/hm;if(v<0.004)continue;ctx.fillStyle=viridis(Math.pow(v,0.4));ctx.fillRect(x0+ix*bw2,y0+chs-(iy+1)*bh2,bw2+0.5,bh2+0.5);}}}
       }
-      ctx.strokeStyle='#2a2a2a'; ctx.lineWidth=0.5; ctx.strokeRect(x0,y0,cws,chs);
+      ctx.strokeStyle='#2a2a2a';ctx.lineWidth=0.5;ctx.strokeRect(x0,y0,cws,chs);
       if(col===0&&row>0){ctx.fillStyle='#444';ctx.font=tH+'px monospace';ctx.textAlign='right';ctx.fillText(hi[row].toFixed(1),x0-2,y0+7);ctx.fillText(lo[row].toFixed(1),x0-2,y0+chs);}
       if(row===NDIM-1){ctx.fillStyle='#444';ctx.font=tH+'px monospace';ctx.textAlign='left';ctx.fillText(lo[col].toFixed(1),x0,y0+chs+tH+2);ctx.textAlign='right';ctx.fillText(hi[col].toFixed(1),x0+cws,y0+chs+tH+2);}
     }
   }
-  ctx.fillStyle='#777'; ctx.font=lH+'px monospace';
   for(var i=0;i<NDIM;i++){
-    ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.translate(ML-lH,MT+(i+0.5)*ch);ctx.rotate(-Math.PI/2);ctx.fillText(axN[i],0,0);ctx.restore();
-    ctx.textAlign='center'; ctx.fillText(axN[i],ML+(i+0.5)*cw,MT+NDIM*ch+lH*1.2);
+    drawMath(ctx,axN[i],ML-lH*1.1,MT+(i+0.5)*ch,lH*1.15,-Math.PI/2,'#888');
+    drawMath(ctx,axN[i],ML+(i+0.5)*cw,MT+NDIM*ch+lH*1.5,lH*1.15,0,'#888');
   }
 }
 
-// ---- sliders ----
-var sliders=[
-  ['sigA',1],['sigB',1],['sigCA',2],['sigCB',2],['sigZA',2],['sigZB',2],['Nk',0]
-];
-sliders.forEach(function(s){
+// ──────────────────────────────────────────────
+// View toggle
+// ──────────────────────────────────────────────
+var viewMode='pairs';
+function toggleView(){
+  viewMode=viewMode==='pairs'?'corner':'pairs';
+  var pairs=viewMode==='pairs';
+  document.querySelectorAll('canvas.pairplot').forEach(function(c){c.style.display=pairs?'block':'none';});
+  document.getElementById('corner-full').style.display=pairs?'none':'block';
+  var btn=document.getElementById('viewBtn');
+  btn.textContent=pairs?'full corner':'pairs view';
+  btn.classList.toggle('active',!pairs);
+  initSizes();doUpdate();
+}
+
+// ──────────────────────────────────────────────
+// Slider handlers
+// ──────────────────────────────────────────────
+[['sigA',1],['sigB',1],['sigCA',2],['sigCB',2],['sigZA',2],['sigZB',2],['Nk',0]].forEach(function(s){
   var el=document.getElementById(s[0]);
   function upd(){document.getElementById('v_'+s[0]).textContent=parseFloat(el.value).toFixed(s[1]);}
   el.addEventListener('input',function(){upd();scheduleUpdate();});
   upd();
 });
 
-// ---- throttle ----
+// ──────────────────────────────────────────────
+// Update loop
+// ──────────────────────────────────────────────
 var _raf=null;
-function scheduleUpdate(){
-  if(_raf)return;
-  _raf=requestAnimationFrame(function(){_raf=null;doUpdate();});
-}
+function scheduleUpdate(){if(_raf)return;_raf=requestAnimationFrame(function(){_raf=null;doUpdate();});}
 function doUpdate(){
   generateSamples();
   blobDefs.forEach(drawBlob);
-  renderCorner();
+  if(viewMode==='pairs'){pairDefs.forEach(renderPairCanvas);}
+  else{renderCorner();}
   document.getElementById('info').innerHTML=
-    'N='+S.N.toLocaleString()+'  swap: '+(S.fswap/S.N*100).toFixed(1)+'%<br>'+
-    'μ_mA='+blobs.M.x.toFixed(1)+'  μ_mB='+blobs.M.y.toFixed(1)+'  '+
-    'μ_χA='+blobs.C.x.toFixed(2)+'  μ_χB='+blobs.C.y.toFixed(2);
+    'N='+S.N.toLocaleString()+'&nbsp;&nbsp;swap: '+(S.fswap/S.N*100).toFixed(1)+'%&nbsp;&nbsp;'+
+    '&mu;<sub>mA</sub>='+blobs.M.x.toFixed(1)+'&nbsp;&mu;<sub>mB</sub>='+blobs.M.y.toFixed(1)+'&nbsp;&nbsp;'+
+    '&mu;<sub>&chi;A</sub>='+blobs.C.x.toFixed(2)+'&nbsp;&mu;<sub>&chi;B</sub>='+blobs.C.y.toFixed(2);
 }
 
-// ---- sizing: set canvas buffer size ONCE, never change again ----
+// ──────────────────────────────────────────────
+// Sizing
+// ──────────────────────────────────────────────
+var initDone=false;
 function initSizes(){
   var dpr=window.devicePixelRatio||1;
-  var sidebar=document.getElementById('sidebar');
-  var sw=sidebar.clientWidth||270;
-  var bsz=Math.floor((sw-22)/2);  // two per row
-  bsz=Math.max(bsz,100);
-  // third blob is full width
+  // Blob canvases: square, driven by their CSS column width
+  var maxByHeight=Math.floor((window.innerHeight-130)/2);
   blobDefs.forEach(function(def,i){
     var cv=document.getElementById(def.id);
-    var sz=i<2?bsz:Math.min(sw-12,240);
-    cv.width=Math.round(sz*dpr);
-    cv.height=Math.round(sz*dpr);
-    cv.style.width=sz+'px';
-    cv.style.height=sz+'px';
+    var w=Math.min(Math.max(cv.offsetWidth||180,80),maxByHeight);
+    cv.width=Math.round(w*dpr);
+    cv.height=Math.round(w*dpr);
+    cv.style.width=w+'px';
+    cv.style.height=w+'px';
+    // Match pair canvas to same size
+    var pcv=document.getElementById(pairDefs[i].id);
+    pcv.width=Math.round(w*dpr);
+    pcv.height=Math.round(w*dpr);
+    pcv.style.width=w+'px';
+    pcv.style.height=w+'px';
   });
-  var cw=document.getElementById('corner-wrap');
-  var csz=Math.max(300,Math.min(cw.clientWidth-12,window.innerHeight-40,680));
+  // Full corner canvas
   var ccv=document.getElementById('cornercv');
+  var cw=document.getElementById('corner-full').offsetWidth||600;
+  var csz=Math.max(280,Math.min(cw,700));
   ccv.width=Math.round(csz*dpr);
   ccv.height=Math.round(csz*dpr);
   ccv.style.width=csz+'px';
   ccv.style.height=csz+'px';
 }
 
-// Only resize canvases when window actually changes size, not on every frame
-var _resizeTid=null;
+var _rsz=null;
 window.addEventListener('resize',function(){
-  clearTimeout(_resizeTid);
-  _resizeTid=setTimeout(function(){initSizes();doUpdate();},120);
+  clearTimeout(_rsz);_rsz=setTimeout(function(){initSizes();doUpdate();},120);
 });
 
 initSizes();
+initDone=true;
 doUpdate();
 </script>
 </body></html>
