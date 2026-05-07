@@ -278,17 +278,16 @@ function drawBlob(def){
   var sx=sig.sx/(def.xhi-def.xlo)*(W-2*p);
   var sy=sig.sy/(def.yhi-def.ylo)*(H-2*p);
   var rho=sig.rho||0;
-  // Eigen-decomposition of 2x2 correlation matrix to get ellipse tilt
-  // Cov = [[sx²,rho*sx*sy],[rho*sx*sy,sy²]]
   var a=sx*sx,b=rho*sx*sy,d=sy*sy;
   var tr=a+d,det=a*d-b*b;
-  var l1=(tr+Math.sqrt(Math.max(0,(tr*tr-4*det))))/2;
-  var l2=(tr-Math.sqrt(Math.max(0,(tr*tr-4*det))))/2;
-  var angle=(Math.abs(b)<1e-10)?0:-Math.atan2(l1-a,b);
+  var l1=(tr+Math.sqrt(Math.max(0,tr*tr-4*det)))/2;
+  var l2=(tr-Math.sqrt(Math.max(0,tr*tr-4*det)))/2;
+  var angle=-Math.atan2(l1-a,b);
   var r1=Math.sqrt(Math.max(0,l1)),r2=Math.sqrt(Math.max(0,l2));
   function drawEll(scale,fill,stroke,lw){
     ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=lw;
-    ctx.beginPath();ctx.ellipse(cen.px,cen.py,r1*scale,r2*scale,angle,0,2*Math.PI);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.ellipse(cen.px,cen.py,r1*scale,r2*scale,angle,0,2*Math.PI);
+    ctx.fill();ctx.stroke();
   }
   drawEll(2,'rgba(40,90,140,0.12)','#4a8aaa',1.2);
   drawEll(1,'rgba(40,90,140,0.10)','#6aaccc',0.8);
