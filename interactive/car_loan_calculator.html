@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Car Loan Calculator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f0f2f5;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+    }
+
+    /* Desktop: centered floating card */
+    @media (min-width: 600px) {
+      body {
+        align-items: center;
+        padding: 24px;
+      }
+      .card {
+        min-height: unset !important;
+        height: auto !important;
+        border-radius: 16px !important;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+        padding: 32px 36px 28px !important;
+      }
+    }
+
+    .card {
+      background: #fff;
+      width: 100%;
+      max-width: 540px;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 20px 16px;
+      border-radius: 0;
+    }
+
+    h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 12px;
+      letter-spacing: -0.3px;
+      flex-shrink: 0;
+    }
+
+    /* Sliders fill remaining vertical space */
+    .sliders-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
+      min-height: 0;
+    }
+
+    .slider-group { flex-shrink: 0; }
+
+    .slider-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 7px;
+    }
+
+    .slider-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .slider-value {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #2563eb;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #e2e8f0;
+      outline: none;
+      cursor: pointer;
+      display: block;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #2563eb;
+      box-shadow: 0 1px 6px rgba(37,99,235,0.4);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #2563eb;
+      border: none;
+      box-shadow: 0 1px 6px rgba(37,99,235,0.4);
+    }
+
+    .warning {
+      font-size: 0.72rem;
+      color: #f59e0b;
+      margin-top: 4px;
+      display: none;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #f0f0f0;
+      margin: 10px 0;
+      flex-shrink: 0;
+    }
+
+    /* Results always visible at bottom */
+    .results {
+      background: #f8faff;
+      border: 1px solid #dbeafe;
+      border-radius: 12px;
+      padding: 10px 14px;
+      flex-shrink: 0;
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+    }
+
+    .result-row + .result-row {
+      border-top: 1px solid #e8f0fe;
+    }
+
+    .result-label {
+      font-size: 0.78rem;
+      color: #555;
+    }
+
+    .result-value {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+
+    .result-value.highlight { color: #dc2626; }
+
+    .summary-block {
+      margin-top: 10px;
+      background: #1a1a2e;
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .summary-icon { font-size: 1.5rem; line-height: 1; }
+
+    .summary-text .big-number {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1;
+    }
+
+    .summary-text .big-label {
+      font-size: 0.68rem;
+      color: #94a3b8;
+      margin-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Car Loan Calculator</h1>
+
+    <div class="sliders-section">
+      <div class="slider-group">
+        <div class="slider-label-row">
+          <span class="slider-label">Car Price</span>
+          <span class="slider-value" id="val-price">$40,000</span>
+        </div>
+        <input type="range" id="slider-price" min="30000" max="50000" step="500" value="40000">
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-label-row">
+          <span class="slider-label">Down Payment</span>
+          <span class="slider-value" id="val-down">$5,000</span>
+        </div>
+        <input type="range" id="slider-down" min="0" max="50000" step="500" value="5000">
+        <p class="warning" id="down-warning">Down payment capped at car price.</p>
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-label-row">
+          <span class="slider-label">Loan Term</span>
+          <span class="slider-value" id="val-term">60 months</span>
+        </div>
+        <input type="range" id="slider-term" min="12" max="84" step="12" value="60">
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-label-row">
+          <span class="slider-label">Annual Interest Rate</span>
+          <span class="slider-value" id="val-rate">6.0%</span>
+        </div>
+        <input type="range" id="slider-rate" min="0" max="20" step="0.1" value="6">
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="results">
+      <div class="result-row">
+        <span class="result-label">Car Price</span>
+        <span class="result-value" id="res-price">$40,000</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Down Payment</span>
+        <span class="result-value" id="res-down">$5,000</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Loan Amount</span>
+        <span class="result-value" id="res-loan">$35,000</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Monthly Payment</span>
+        <span class="result-value" id="res-monthly">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Total Amount Paid</span>
+        <span class="result-value" id="res-total">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Total Interest Paid</span>
+        <span class="result-value highlight" id="res-interest">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Interest as % of Car Price</span>
+        <span class="result-value highlight" id="res-pct">—</span>
+      </div>
+    </div>
+
+    <div class="summary-block">
+      <div class="summary-icon">💸</div>
+      <div class="summary-text">
+        <div class="big-number" id="summary-number">—</div>
+        <div class="big-label">extra paid in interest over loan life</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fmt  = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const fmtD = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const sliderPrice = document.getElementById('slider-price');
+    const sliderDown  = document.getElementById('slider-down');
+    const sliderTerm  = document.getElementById('slider-term');
+    const sliderRate  = document.getElementById('slider-rate');
+
+    function calculate() {
+      const price = +sliderPrice.value;
+      let down = +sliderDown.value;
+      const term = +sliderTerm.value;
+      const annualRate = +sliderRate.value;
+
+      const wasCapped = down > price;
+      if (wasCapped) { down = price; sliderDown.value = price; }
+      document.getElementById('down-warning').style.display = wasCapped ? 'block' : 'none';
+      sliderDown.max = price;
+
+      document.getElementById('val-price').textContent = fmt(price);
+      document.getElementById('val-down').textContent  = fmt(down);
+      document.getElementById('val-term').textContent  = term + ' months';
+      document.getElementById('val-rate').textContent  = annualRate.toFixed(1) + '%';
+
+      const loan = price - down;
+      const monthlyRate = annualRate / 100 / 12;
+
+      let monthlyPayment, totalPaid, totalInterest;
+      if (monthlyRate === 0) {
+        monthlyPayment = loan / term;
+        totalPaid = loan;
+        totalInterest = 0;
+      } else {
+        const factor = Math.pow(1 + monthlyRate, term);
+        monthlyPayment = loan * (monthlyRate * factor) / (factor - 1);
+        totalPaid = monthlyPayment * term;
+        totalInterest = totalPaid - loan;
+      }
+
+      const interestPct = price > 0 ? (totalInterest / price) * 100 : 0;
+
+      document.getElementById('res-price').textContent    = fmt(price);
+      document.getElementById('res-down').textContent     = fmt(down);
+      document.getElementById('res-loan').textContent     = fmt(loan);
+      document.getElementById('res-monthly').textContent  = fmtD(monthlyPayment);
+      document.getElementById('res-total').textContent    = fmtD(totalPaid + down);
+      document.getElementById('res-interest').textContent = fmtD(totalInterest);
+      document.getElementById('res-pct').textContent      = interestPct.toFixed(2) + '%';
+      document.getElementById('summary-number').textContent = fmtD(totalInterest);
+    }
+
+    [sliderPrice, sliderDown, sliderTerm, sliderRate].forEach(s => s.addEventListener('input', calculate));
+    calculate();
+  </script>
+</body>
+</html>
