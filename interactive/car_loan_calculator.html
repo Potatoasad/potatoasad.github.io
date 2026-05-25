@@ -84,6 +84,23 @@
       font-size: 1rem;
       font-weight: 700;
       color: #2563eb;
+      cursor: pointer;
+      border-bottom: 1.5px dotted #93c5fd;
+      padding-bottom: 1px;
+    }
+
+    .value-input {
+      background: none;
+      border: none;
+      border-bottom: 2px solid #2563eb;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #2563eb;
+      text-align: right;
+      width: 110px;
+      outline: none;
+      padding: 0;
+      font-family: inherit;
     }
 
     input[type="range"] {
@@ -199,9 +216,9 @@
       <div class="slider-group">
         <div class="slider-label-row">
           <span class="slider-label">Car Price</span>
-          <span class="slider-value" id="val-price">$40,000</span>
+          <span class="slider-value" id="val-price">$35,000</span>
         </div>
-        <input type="range" id="slider-price" min="30000" max="50000" step="500" value="40000">
+        <input type="range" id="slider-price" min="20000" max="65000" step="500" value="35000">
       </div>
 
       <div class="slider-group">
@@ -216,7 +233,7 @@
       <div class="slider-group">
         <div class="slider-label-row">
           <span class="slider-label">Loan Term</span>
-          <span class="slider-value" id="val-term">60 months</span>
+          <span class="slider-value" id="val-term">60 mo (5 yrs)</span>
         </div>
         <input type="range" id="slider-term" min="12" max="84" step="12" value="60">
       </div>
@@ -294,7 +311,9 @@
 
       document.getElementById('val-price').textContent = fmt(price);
       document.getElementById('val-down').textContent  = fmt(down);
-      document.getElementById('val-term').textContent  = term + ' months';
+      const yrs = term / 12;
+      const yrsLabel = Number.isInteger(yrs) ? yrs + ' yr' + (yrs === 1 ? '' : 's') : (yrs).toFixed(1) + ' yrs';
+      document.getElementById('val-term').textContent  = term + ' mo (' + yrsLabel + ')';
       document.getElementById('val-rate').textContent  = annualRate.toFixed(1) + '%';
 
       const loan = price - down;
@@ -323,6 +342,48 @@
       document.getElementById('res-pct').textContent      = interestPct.toFixed(2) + '%';
       document.getElementById('summary-number').textContent = fmtD(totalInterest);
     }
+
+    function makeEditable(spanId, slider, { parse, rawVal }) {
+      const span = document.getElementById(spanId);
+      span.addEventListener('click', () => {
+        if (span.dataset.editing) return;
+        span.dataset.editing = '1';
+
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.value = rawVal();
+        inp.className = 'value-input';
+        span.textContent = '';
+        span.appendChild(inp);
+        inp.focus();
+        inp.select();
+
+        function commit() {
+          if (!span.dataset.editing) return;
+          delete span.dataset.editing;
+          const val = parse(inp.value);
+          if (!isNaN(val) && isFinite(val)) {
+            slider.value = Math.min(+slider.max, Math.max(+slider.min, val));
+          }
+          calculate();
+        }
+
+        inp.addEventListener('blur', commit);
+        inp.addEventListener('keydown', e => {
+          if (e.key === 'Enter') inp.blur();
+          if (e.key === 'Escape') { delete span.dataset.editing; calculate(); }
+        });
+      });
+    }
+
+    const stripMoney = s => parseFloat(s.replace(/[$,\s]/g, ''));
+    makeEditable('val-price', sliderPrice, { parse: stripMoney,     rawVal: () => +sliderPrice.value });
+    makeEditable('val-down',  sliderDown,  { parse: stripMoney,     rawVal: () => +sliderDown.value });
+    makeEditable('val-rate',  sliderRate,  { parse: s => parseFloat(s), rawVal: () => +sliderRate.value });
+    makeEditable('val-term',  sliderTerm,  {
+      parse: s => Math.round(parseInt(s) / 12) * 12,
+      rawVal: () => +sliderTerm.value
+    });
 
     [sliderPrice, sliderDown, sliderTerm, sliderRate].forEach(s => s.addEventListener('input', calculate));
     calculate();
