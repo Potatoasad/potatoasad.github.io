@@ -1,0 +1,930 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>GW label swap — dev</title>
+<script>
+window.MathJax={
+  tex:{inlineMath:[['$','$']]},
+  svg:{fontCache:'none'},
+  startup:{ready(){MathJax.startup.defaultReady();mathReady=true;if(initDone&&!_raf)scheduleUpdate();}}
+};
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111;color:#ddd;font-family:monospace;font-size:12px;padding:8px;max-width:1100px;margin:0 auto}
+h2{font-size:14px;color:#fc6;margin-bottom:5px}
+
+/* ── Samples bar ── */
+#model-bar{background:#181818;border:1px solid #2a2a2a;border-radius:4px;margin-bottom:6px}
+#model-bar summary{padding:5px 10px;cursor:pointer;color:#6cf;font-weight:bold;font-size:11px;
+  list-style:none;display:flex;align-items:center;justify-content:space-between}
+#model-bar summary::-webkit-details-marker{display:none}
+#model-bar summary::after{content:'▸ edit';color:#555;font-size:10px}
+#model-bar[open] summary::after{content:'▾ hide'}
+.params-grid{display:flex;flex-wrap:wrap;gap:10px 18px;padding:4px 12px 8px}
+.pr{display:flex;align-items:center;gap:4px;margin-bottom:2px}
+.pr label{min-width:44px;color:#aaa;font-size:10px}
+.pr input[type=range]{width:80px;height:13px}
+.pr .val{width:34px;text-align:right;color:#ff9;font-size:10px}
+
+/* ── Components panel ── */
+#comp-bar{background:#181818;border:1px solid #2a2a2a;border-radius:4px;margin-bottom:6px}
+#comp-bar-header{padding:5px 10px;display:flex;align-items:center;gap:8px}
+#comp-bar-header .title{color:#6cf;font-weight:bold;font-size:11px;flex:1}
+
+.add-wrap{position:relative;display:inline-block}
+.add-wrap>button{background:#1a3a2a;color:#6fc;border:1px solid #3a6a4a;padding:2px 9px;
+  border-radius:3px;cursor:pointer;font-size:10px;font-family:monospace}
+.add-menu{display:none;position:absolute;right:0;top:100%;margin-top:2px;background:#1c1c1c;
+  border:1px solid #3a3a3a;border-radius:3px;z-index:200;min-width:150px;box-shadow:0 4px 12px #000a}
+.add-menu.open{display:block}
+.add-menu div{padding:5px 12px;cursor:pointer;color:#adf;font-size:10px;white-space:nowrap}
+.add-menu div:hover{background:#252525}
+
+/* ── Weights row ── */
+.weights-row{display:flex;flex-wrap:wrap;gap:6px 14px;padding:4px 10px 6px;
+  border-bottom:1px solid #1e1e1e}
+.wt-item{display:flex;align-items:center;gap:4px}
+.wt-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.wt-item>label{color:#888;font-size:10px}
+.wt-item input[type=range]{width:68px;height:13px}
+.wt-item .wval{width:30px;color:#ff9;font-size:10px}
+
+/* ── Component blocks ── */
+.comp-block{border-top:1px solid #1e1e1e}
+.comp-block>summary{padding:4px 10px;cursor:pointer;display:flex;align-items:center;
+  gap:6px;list-style:none;font-size:10px;user-select:none}
+.comp-block>summary::-webkit-details-marker{display:none}
+.comp-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0}
+.comp-title{flex:1;color:#bbb}
+.comp-remove{background:none;border:1px solid #444;color:#777;padding:1px 5px;
+  border-radius:2px;cursor:pointer;font-size:9px;font-family:monospace}
+.comp-remove:hover{color:#f88;border-color:#844}
+.comp-body{padding:4px 10px 8px 14px}
+.csec{margin-bottom:5px}
+.csec-title{color:#555;font-size:9px;text-transform:uppercase;letter-spacing:.06em;
+  margin-bottom:3px;margin-top:4px}
+.dist-row{display:flex;align-items:center;flex-wrap:wrap;gap:3px 6px;margin-bottom:3px}
+.dist-lbl{color:#777;font-size:9px;min-width:22px}
+.dist-toggle{background:#1a2a3a;color:#8af;border:1px solid #2a4a6a;padding:1px 6px;
+  border-radius:2px;cursor:pointer;font-size:9px;font-family:monospace;margin-right:4px}
+.dist-toggle:hover{background:#253550}
+.sparams{display:flex;flex-wrap:wrap;gap:3px 10px}
+
+/* ── Controls row ── */
+#ctrl-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+#info{color:#9d9;font-size:10px;flex:1;line-height:1.5}
+button.vbtn{background:#2a3a4a;color:#adf;border:1px solid #4a6a8a;padding:3px 9px;
+  border-radius:3px;cursor:pointer;font-size:10px;font-family:monospace;-webkit-appearance:none}
+button.vbtn.active{background:#1a4a2a;border-color:#4a9a6a;color:#afc}
+
+/* ── Main grid ── */
+#grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.pair-col{display:flex;flex-direction:column;gap:4px;min-width:0}
+canvas.blob{display:block;width:100%;background:#0d0d0d;border:1px solid #333;
+  border-radius:4px;cursor:crosshair;touch-action:none}
+.clbl{color:#999;font-size:12px;text-align:center;line-height:1.4;padding:2px 0}
+canvas.pairplot{display:block;width:100%;background:#0a0a0a;border:1px solid #333;border-radius:4px}
+
+/* ── Full corner ── */
+#corner-full{display:none;margin-top:6px;text-align:center}
+#corner-full canvas{display:inline-block;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:4px}
+
+@media(max-width:640px){#grid{grid-template-columns:1fr}}
+</style>
+</head><body>
+
+<h2>GW label-swap (dev) — mixture model — drag blobs → see folding in posteriors</h2>
+
+<!-- Samples bar -->
+<details id="model-bar">
+  <summary>Samples</summary>
+  <div class="params-grid">
+    <div class="pr"><label>N (k)</label><input type="range" id="Nk" min="5" max="100" step="5" value="30"><span class="val" id="v_Nk">30</span></div>
+  </div>
+</details>
+
+<!-- Components panel -->
+<div id="comp-bar">
+  <div id="comp-bar-header">
+    <span class="title">Components</span>
+    <div class="add-wrap" id="addWrap">
+      <button onclick="toggleAddMenu()">+ Add</button>
+      <div class="add-menu" id="addMenu">
+        <div onclick="addComponent('gaussian')">Gaussian</div>
+        <div onclick="addComponent('pl_ma')">Power Law → m<sub>A</sub></div>
+        <div onclick="addComponent('pl_mb')">Power Law → m<sub>B</sub></div>
+      </div>
+    </div>
+  </div>
+  <div class="weights-row" id="weightsRow"></div>
+  <div id="compBlocks"></div>
+</div>
+
+<!-- Controls row -->
+<div id="ctrl-row">
+  <div id="info">–</div>
+  <button class="vbtn" id="viewBtn" onclick="toggleView()">full corner</button>
+</div>
+
+<!-- 3-column grid -->
+<div id="grid">
+  <div class="pair-col">
+    <canvas id="cvM" class="blob"></canvas>
+    <div class="clbl">$m_A$ vs $m_B$</div>
+    <canvas id="cv_m" class="pairplot"></canvas>
+  </div>
+  <div class="pair-col">
+    <canvas id="cvC" class="blob"></canvas>
+    <div class="clbl">$\chi_A$ vs $\chi_B$</div>
+    <canvas id="cv_chi" class="pairplot"></canvas>
+  </div>
+  <div class="pair-col">
+    <canvas id="cvZ" class="blob"></canvas>
+    <div class="clbl">$\cos\theta_A$ vs $\cos\theta_B$</div>
+    <canvas id="cv_z" class="pairplot"></canvas>
+  </div>
+</div>
+
+<!-- Full 6×6 corner -->
+<div id="corner-full">
+  <canvas id="cornercv"></canvas>
+</div>
+
+<script>
+// ── MathJax helpers ─────────────────────────────────────────────
+var mathReady=false,mathImgCache={};
+function getMathImg(tex,hpx,color){
+  color=color||'#cccccc';
+  var key=tex+'|'+hpx+'|'+color;
+  if(mathImgCache[key])return mathImgCache[key];
+  if(!mathReady||!window.MathJax||!MathJax.tex2svg)return null;
+  try{
+    var wrapper=MathJax.tex2svg(tex,{display:false});
+    var svg=wrapper.querySelector('svg');
+    if(!svg)return null;
+    var vb=svg.viewBox?svg.viewBox.baseVal:null;
+    var aspect=(vb&&vb.height>0)?vb.width/vb.height:3;
+    var wpx=Math.max(1,Math.round(hpx*aspect));
+    svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    svg.setAttribute('width',wpx+'px');svg.setAttribute('height',hpx+'px');
+    var s=new XMLSerializer().serializeToString(svg);
+    s=s.replace(/currentColor/g,color);
+    var img=new Image();
+    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s);
+    var entry={img:img,w:wpx,h:hpx,ready:false};
+    img.onload=function(){entry.ready=true;if(initDone&&!_raf)scheduleUpdate();};
+    mathImgCache[key]=entry;
+    return entry;
+  }catch(e){return null;}
+}
+function drawMath(ctx,tex,cx,cy,hpx,rotate,color){
+  var m=getMathImg(tex,hpx,color);
+  ctx.save();ctx.translate(cx,cy);if(rotate)ctx.rotate(rotate);
+  if(!m||!m.ready){
+    ctx.font='bold '+Math.round(hpx*.85)+'px sans-serif';
+    ctx.fillStyle=color||'#ccc';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(tex.replace(/[\\{}]/g,'').replace(/mathrm|cos/g,''),0,0);
+  }else{ctx.drawImage(m.img,-m.w/2,-m.h/2,m.w,m.h);}
+  ctx.restore();
+}
+
+// ── Component colours ────────────────────────────────────────────
+var COMP_COLORS=['#6aaccc','#fcaa44','#88ccff','#ff8866','#88eeaa','#cc99ff','#ffdd88','#88ddcc'];
+
+// ── Component factories ──────────────────────────────────────────
+function mkGaussianComp(color){
+  return{weight:1,color:color,
+    distMa:{type:'Gaussian',mu:35,sigma:13},
+    distMb:{type:'Gaussian',mu:20,sigma:26},
+    rhoM:0,
+    muCa:0.30,muCb:0.60,sigCa:0.08,sigCb:0.16,rhoChi:0,
+    muZa:0.80,muZb:-0.20,sigZa:0.08,sigZb:0.16,rhoZ:0};
+}
+function mkPLmaComp(color){
+  return{weight:1,color:color,
+    distMa:{type:'PowerLaw',mmin:5,mmax:50,alpha:-2.35},
+    distMb:{type:'Gaussian',mu:20,sigma:26},
+    rhoM:0,
+    muCa:0.30,muCb:0.60,sigCa:0.08,sigCb:0.16,rhoChi:0,
+    muZa:0.80,muZb:-0.20,sigZa:0.08,sigZb:0.16,rhoZ:0};
+}
+function mkPLmbComp(color){
+  return{weight:1,color:color,
+    distMa:{type:'Gaussian',mu:35,sigma:13},
+    distMb:{type:'PowerLaw',mmin:5,mmax:50,alpha:-2.35},
+    rhoM:0,
+    muCa:0.30,muCb:0.60,sigCa:0.08,sigCb:0.16,rhoChi:0,
+    muZa:0.80,muZb:-0.20,sigZa:0.08,sigZb:0.16,rhoZ:0};
+}
+
+var components=[mkGaussianComp(COMP_COLORS[0])];
+
+// ── Canvas definitions ────────────────────────────────────────────
+var blobDefs=[
+  {id:'cvM',xlo:5,xhi:90,ylo:5,yhi:90,diag:true, xl:'m_A',yl:'m_B'},
+  {id:'cvC',xlo:0,xhi:1, ylo:0,yhi:1, diag:false,xl:'\\chi_A',yl:'\\chi_B'},
+  {id:'cvZ',xlo:-1,xhi:1,ylo:-1,yhi:1,diag:false,xl:'\\cos\\theta_A',yl:'\\cos\\theta_B'},
+];
+var pairDefs=[
+  {id:'cv_m',  lox:5,  hix:90, loy:5,  hiy:90, xl:'m_1',           yl:'m_2',           axX:null,axY:null},
+  {id:'cv_chi',lox:0,  hix:1,  loy:0,  hiy:1,  xl:'\\chi_1',       yl:'\\chi_2',       axX:null,axY:null},
+  {id:'cv_z',  lox:-1, hix:1,  loy:-1, hiy:1,  xl:'\\cos\\theta_1',yl:'\\cos\\theta_2',axX:null,axY:null},
+];
+
+// ── Coordinate transforms ─────────────────────────────────────────
+function d2c(cv,dx,dy,def){
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr,p=16;
+  return{px:p+(dx-def.xlo)/(def.xhi-def.xlo)*(W-2*p),
+         py:(H-p)-(dy-def.ylo)/(def.yhi-def.ylo)*(H-2*p)};
+}
+function c2d(cv,px,py,def){
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr,p=16;
+  return{x:def.xlo+(px-p)/(W-2*p)*(def.xhi-def.xlo),
+         y:def.ylo+((H-p)-py)/(H-2*p)*(def.yhi-def.ylo)};
+}
+function clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v;}
+
+// ── RNG ───────────────────────────────────────────────────────────
+function randn(){
+  var u=0,v=0;
+  while(!u)u=Math.random();
+  while(!v)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+// ── Sampling helpers ──────────────────────────────────────────────
+function samplePL(mmin,mmax,alpha){
+  var u=Math.random();
+  if(Math.abs(alpha+1)<1e-6)return mmin*Math.pow(mmax/mmin,u); // log-uniform
+  var a1=alpha+1,mn=Math.pow(Math.max(mmin,1e-10),a1),mx=Math.pow(mmax,a1);
+  return Math.pow(u*(mx-mn)+mn,1/a1);
+}
+function corrNorm(mu1,mu2,s1,s2,rho){
+  var z1=randn(),z2=randn();
+  return[mu1+s1*z1, mu2+s2*(rho*z1+Math.sqrt(Math.max(0,1-rho*rho))*z2)];
+}
+// Truncated bivariate Gaussian via rejection
+function corrNormTrunc(muA,muB,sA,sB,rho,loA,hiA,loB,hiB){
+  var x,y,iter=0;
+  do{
+    var z1=randn(),z2=randn();
+    x=muA+sA*z1;
+    y=muB+sB*(rho*z1+Math.sqrt(Math.max(0,1-rho*rho))*z2);
+    iter++;
+  }while((x<loA||x>hiA||y<loB||y>hiB)&&iter<300);
+  return[clamp(x,loA,hiA),clamp(y,loB,hiB)];
+}
+function normWeights(){
+  var tot=0;
+  for(var k=0;k<components.length;k++)tot+=Math.max(0,components[k].weight);
+  if(tot<=0){var eq=1/components.length;return components.map(function(){return eq;});}
+  return components.map(function(c){return Math.max(0,c.weight)/tot;});
+}
+function pickComp(W){
+  var r=Math.random(),cum=0;
+  for(var k=0;k<W.length;k++){cum+=W[k];if(r<cum)return k;}
+  return W.length-1;
+}
+
+// ── Generate samples (mixture) ────────────────────────────────────
+var S=null;
+function generateSamples(){
+  var N=parseInt(document.getElementById('Nk').value)*1000;
+  var W=normWeights();
+  var mA=new Float32Array(N),mB=new Float32Array(N);
+  var cA=new Float32Array(N),cB=new Float32Array(N);
+  var zA=new Float32Array(N),zB=new Float32Array(N);
+
+  for(var i=0;i<N;i++){
+    var c=components[pickComp(W)];
+    // Mass: each dim independently Gaussian or PowerLaw
+    // If both Gaussian, allow rhoM correlation
+    if(c.distMa.type==='Gaussian'&&c.distMb.type==='Gaussian'){
+      var pm=corrNorm(c.distMa.mu,c.distMb.mu,c.distMa.sigma,c.distMb.sigma,c.rhoM);
+      mA[i]=pm[0];mB[i]=pm[1];
+    }else{
+      mA[i]=(c.distMa.type==='Gaussian')
+        ?c.distMa.mu+c.distMa.sigma*randn()
+        :samplePL(c.distMa.mmin,c.distMa.mmax,c.distMa.alpha);
+      mB[i]=(c.distMb.type==='Gaussian')
+        ?c.distMb.mu+c.distMb.sigma*randn()
+        :samplePL(c.distMb.mmin,c.distMb.mmax,c.distMb.alpha);
+    }
+    // Spin: truncated bivariate Gaussian [0,1]x[0,1]
+    var pc=corrNormTrunc(c.muCa,c.muCb,c.sigCa,c.sigCb,c.rhoChi,0,1,0,1);
+    cA[i]=pc[0];cB[i]=pc[1];
+    // Cos tilt: truncated bivariate Gaussian [-1,1]x[-1,1]
+    var pz=corrNormTrunc(c.muZa,c.muZb,c.sigZa,c.sigZb,c.rhoZ,-1,1,-1,1);
+    zA[i]=pz[0];zB[i]=pz[1];
+  }
+  // Label swap: m1 >= m2
+  var m1=new Float32Array(N),m2=new Float32Array(N);
+  var c1=new Float32Array(N),c2=new Float32Array(N);
+  var z1=new Float32Array(N),z2=new Float32Array(N);
+  var fswap=0;
+  for(var i=0;i<N;i++){
+    if(mA[i]>=mB[i]){m1[i]=mA[i];m2[i]=mB[i];c1[i]=cA[i];c2[i]=cB[i];z1[i]=zA[i];z2[i]=zB[i];}
+    else{m1[i]=mB[i];m2[i]=mA[i];c1[i]=cB[i];c2[i]=cA[i];z1[i]=zB[i];z2[i]=zA[i];fswap++;}
+  }
+  S={N:N,m1:m1,m2:m2,c1:c1,c2:c2,z1:z1,z2:z2,fswap:fswap};
+  pairDefs[0].axX=S.m1;pairDefs[0].axY=S.m2;
+  pairDefs[1].axX=S.c1;pairDefs[1].axY=S.c2;
+  pairDefs[2].axX=S.z1;pairDefs[2].axY=S.z2;
+}
+
+// ── Viridis ────────────────────────────────────────────────────────
+function viridis(t){
+  t=t<0?0:t>1?1:t;
+  var st=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+  var tt=t*4,i=Math.min(3,Math.floor(tt)),f=tt-i;
+  var a=st[i],b=st[Math.min(4,i+1)];
+  return'rgb('+Math.round(a[0]+(b[0]-a[0])*f)+','+Math.round(a[1]+(b[1]-a[1])*f)+','+Math.round(a[2]+(b[2]-a[2])*f)+')';
+}
+
+// ── Color helper (hex 3 or 6 digit → rgba) ─────────────────────────
+function hexRgba(hex,alpha){
+  var h=hex.replace('#','');
+  if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  var r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+  return'rgba('+r+','+g+','+b+','+alpha+')';
+}
+
+// ── Blob canvas drawing ────────────────────────────────────────────
+function drawBlobCanvas(def){
+  var cv=document.getElementById(def.id);
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr;
+  var ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#0d0d0d';ctx.fillRect(0,0,W,H);
+  var p=16;
+  // Grid
+  ctx.strokeStyle='#1e1e1e';ctx.lineWidth=0.5;
+  for(var k=0;k<=4;k++){
+    var gx=p+k/4*(W-2*p),gy=p+k/4*(H-2*p);
+    ctx.beginPath();ctx.moveTo(gx,p);ctx.lineTo(gx,H-p);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p,gy);ctx.lineTo(W-p,gy);ctx.stroke();
+  }
+  if(def.diag){
+    ctx.strokeStyle='#1e2e1e';ctx.lineWidth=0.8;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(p,H-p);ctx.lineTo(W-p,p);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // Draw each component
+  for(var ci=0;ci<components.length;ci++){
+    var c=components[ci];
+    if(def.id==='cvM')     drawCompMass(ctx,cv,def,c,W,H,p);
+    else if(def.id==='cvC')drawCompEllipse(ctx,cv,def,c.muCa,c.muCb,c.sigCa,c.sigCb,c.rhoChi,c.color,W,H,p,true);
+    else                   drawCompEllipse(ctx,cv,def,c.muZa,c.muZb,c.sigZa,c.sigZb,c.rhoZ,  c.color,W,H,p,true);
+  }
+  // Axis labels
+  var lH=Math.max(10,Math.round(W*0.068));
+  drawMath(ctx,def.xl,W/2,H-3,lH,0,'#555');
+  drawMath(ctx,def.yl,9,H/2,lH,-Math.PI/2,'#555');
+}
+
+function drawCompMass(ctx,cv,def,c,W,H,p){
+  var isMaG=(c.distMa.type==='Gaussian');
+  var isMbG=(c.distMb.type==='Gaussian');
+  var col=c.color;
+
+  if(isMaG&&isMbG){
+    drawCompEllipse(ctx,cv,def,c.distMa.mu,c.distMb.mu,c.distMa.sigma,c.distMb.sigma,c.rhoM,col,W,H,p,true);
+    return;
+  }
+
+  // PowerLaw in mA → vertical lines
+  if(!isMaG){
+    var xLo=d2c(cv,c.distMa.mmin,def.ylo,def).px;
+    var xHi=d2c(cv,c.distMa.mmax,def.ylo,def).px;
+    ctx.fillStyle=hexRgba(col,0.07);
+    ctx.fillRect(xLo,p,xHi-xLo,H-2*p);
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();ctx.moveTo(xLo,p);ctx.lineTo(xLo,H-p);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(xHi,p);ctx.lineTo(xHi,H-p);ctx.stroke();
+    ctx.setLineDash([]);
+    // Drag handles
+    ctx.fillStyle=col;
+    ctx.beginPath();ctx.arc(xLo,H/2,4.5,0,2*Math.PI);ctx.fill();
+    ctx.beginPath();ctx.arc(xHi,H/2,4.5,0,2*Math.PI);ctx.fill();
+  }
+
+  // PowerLaw in mB → horizontal lines
+  if(!isMbG){
+    var yLo=d2c(cv,def.xlo,c.distMb.mmin,def).py; // higher canvas y (lower data y)
+    var yHi=d2c(cv,def.xlo,c.distMb.mmax,def).py; // lower canvas y (higher data y)
+    var yTop=Math.min(yLo,yHi),yBot=Math.max(yLo,yHi);
+    ctx.fillStyle=hexRgba(col,0.07);
+    ctx.fillRect(p,yTop,W-2*p,yBot-yTop);
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();ctx.moveTo(p,yLo);ctx.lineTo(W-p,yLo);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p,yHi);ctx.lineTo(W-p,yHi);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=col;
+    ctx.beginPath();ctx.arc(W/2,yLo,4.5,0,2*Math.PI);ctx.fill();
+    ctx.beginPath();ctx.arc(W/2,yHi,4.5,0,2*Math.PI);ctx.fill();
+  }
+
+  // Gaussian mA with PL mB: show Gaussian centre as dashed vertical
+  if(isMaG&&!isMbG){
+    var xc=d2c(cv,c.distMa.mu,def.ylo,def).px;
+    ctx.strokeStyle=col;ctx.lineWidth=1;ctx.globalAlpha=0.45;ctx.setLineDash([2,5]);
+    ctx.beginPath();ctx.moveTo(xc,p);ctx.lineTo(xc,H-p);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(xc,H/2,4.5,0,2*Math.PI);ctx.fill();
+  }
+
+  // Gaussian mB with PL mA: show Gaussian centre as dashed horizontal
+  if(!isMaG&&isMbG){
+    var yc=d2c(cv,def.xlo,c.distMb.mu,def).py;
+    ctx.strokeStyle=col;ctx.lineWidth=1;ctx.globalAlpha=0.45;ctx.setLineDash([2,5]);
+    ctx.beginPath();ctx.moveTo(p,yc);ctx.lineTo(W-p,yc);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(W/2,yc,4.5,0,2*Math.PI);ctx.fill();
+  }
+}
+
+function drawCompEllipse(ctx,cv,def,muX,muY,sigX,sigY,rho,col,W,H,p,showDot){
+  var cen=d2c(cv,muX,muY,def);
+  var sx=sigX/(def.xhi-def.xlo)*(W-2*p);
+  var sy=sigY/(def.yhi-def.ylo)*(H-2*p);
+  rho=rho||0;
+  var a=sx*sx,b=rho*sx*sy,d=sy*sy;
+  var tr=a+d,det=a*d-b*b;
+  var disc=Math.max(0,tr*tr-4*det);
+  var l1=(tr+Math.sqrt(disc))/2,l2=(tr-Math.sqrt(disc))/2;
+  // Fixed angle formula: no special-case for b≈0
+  // -atan2(l1-a,b) correctly gives -π/2 when b=0 and sy>sx
+  var angle=-Math.atan2(l1-a,b);
+  var r1=Math.sqrt(Math.max(0,l1)),r2=Math.sqrt(Math.max(0,l2));
+  function ell(scale,fill,stroke,lw){
+    ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=lw;
+    ctx.beginPath();
+    ctx.ellipse(cen.px,cen.py,Math.max(0.5,r1*scale),Math.max(0.5,r2*scale),angle,0,2*Math.PI);
+    ctx.fill();ctx.stroke();
+  }
+  ell(2,hexRgba(col,0.07),col,0.7);
+  ell(1,hexRgba(col,0.13),col,1.2);
+  if(showDot){ctx.fillStyle=col;ctx.beginPath();ctx.arc(cen.px,cen.py,3.5,0,2*Math.PI);ctx.fill();}
+}
+
+// ── Drag (multi-component) ─────────────────────────────────────────
+var dragState={active:false,compIdx:-1,handle:'',def:null};
+
+function compHandles(cv,def,c,ci){
+  var dpr=window.devicePixelRatio||1;
+  var W=cv.width/dpr,H=cv.height/dpr;
+  var hs=[];
+  if(def.id==='cvM'){
+    var isMaG=(c.distMa.type==='Gaussian'),isMbG=(c.distMb.type==='Gaussian');
+    if(isMaG&&isMbG){
+      var cen=d2c(cv,c.distMa.mu,c.distMb.mu,def);
+      hs.push({px:cen.px,py:cen.py,ci:ci,h:'gg'});
+    }else{
+      if(!isMaG){
+        hs.push({px:d2c(cv,c.distMa.mmin,def.ylo,def).px,py:H/2,ci:ci,h:'pla_lo'});
+        hs.push({px:d2c(cv,c.distMa.mmax,def.ylo,def).px,py:H/2,ci:ci,h:'pla_hi'});
+      }else{
+        // Gaussian mA centre (when mB is PL)
+        hs.push({px:d2c(cv,c.distMa.mu,def.ylo,def).px,py:H/2,ci:ci,h:'ga'});
+      }
+      if(!isMbG){
+        hs.push({px:W/2,py:d2c(cv,def.xlo,c.distMb.mmin,def).py,ci:ci,h:'plb_lo'});
+        hs.push({px:W/2,py:d2c(cv,def.xlo,c.distMb.mmax,def).py,ci:ci,h:'plb_hi'});
+      }else{
+        // Gaussian mB centre (when mA is PL)
+        hs.push({px:W/2,py:d2c(cv,def.xlo,c.distMb.mu,def).py,ci:ci,h:'gb'});
+      }
+    }
+  }else if(def.id==='cvC'){
+    var cen=d2c(cv,c.muCa,c.muCb,def);
+    hs.push({px:cen.px,py:cen.py,ci:ci,h:'chi'});
+  }else{
+    var cen=d2c(cv,c.muZa,c.muZb,def);
+    hs.push({px:cen.px,py:cen.py,ci:ci,h:'z'});
+  }
+  return hs;
+}
+
+function applyDrag(cv,def,px,py){
+  if(!dragState.active)return;
+  var d=c2d(cv,px,py,def);
+  var c=components[dragState.compIdx];
+  var h=dragState.handle;
+  var k=dragState.compIdx;
+  if(h==='gg'){
+    c.distMa.mu=clamp(d.x,def.xlo,def.xhi);
+    c.distMb.mu=clamp(d.y,def.ylo,def.yhi);
+    setSlider('c'+k+'_ma_mu',c.distMa.mu,1);
+    setSlider('c'+k+'_mb_mu',c.distMb.mu,1);
+  }else if(h==='ga'){
+    c.distMa.mu=clamp(d.x,def.xlo,def.xhi);
+    setSlider('c'+k+'_ma_mu',c.distMa.mu,1);
+  }else if(h==='gb'){
+    c.distMb.mu=clamp(d.y,def.ylo,def.yhi);
+    setSlider('c'+k+'_mb_mu',c.distMb.mu,1);
+  }else if(h==='pla_lo'){
+    c.distMa.mmin=clamp(d.x,def.xlo,c.distMa.mmax-2);
+    setSlider('c'+k+'_ma_mmin',c.distMa.mmin,0);
+  }else if(h==='pla_hi'){
+    c.distMa.mmax=clamp(d.x,c.distMa.mmin+2,def.xhi);
+    setSlider('c'+k+'_ma_mmax',c.distMa.mmax,0);
+  }else if(h==='plb_lo'){
+    c.distMb.mmin=clamp(d.y,def.ylo,c.distMb.mmax-2);
+    setSlider('c'+k+'_mb_mmin',c.distMb.mmin,0);
+  }else if(h==='plb_hi'){
+    c.distMb.mmax=clamp(d.y,c.distMb.mmin+2,def.yhi);
+    setSlider('c'+k+'_mb_mmax',c.distMb.mmax,0);
+  }else if(h==='chi'){
+    c.muCa=clamp(d.x,def.xlo,def.xhi);c.muCb=clamp(d.y,def.ylo,def.yhi);
+    setSlider('c'+k+'_muCa',c.muCa,2);setSlider('c'+k+'_muCb',c.muCb,2);
+  }else if(h==='z'){
+    c.muZa=clamp(d.x,def.xlo,def.xhi);c.muZb=clamp(d.y,def.ylo,def.yhi);
+    setSlider('c'+k+'_muZa',c.muZa,2);setSlider('c'+k+'_muZb',c.muZb,2);
+  }
+  drawBlobCanvas(def);
+  scheduleUpdate();
+}
+
+function setSlider(id,val,dec){
+  var el=document.getElementById(id);if(!el)return;
+  el.value=val;
+  var v=document.getElementById('v_'+id);if(v)v.textContent=parseFloat(val).toFixed(dec);
+}
+
+blobDefs.forEach(function(def){
+  var cv=document.getElementById(def.id);
+  function onDown(ex,ey){
+    var r=cv.getBoundingClientRect();
+    var px=ex-r.left,py=ey-r.top;
+    var best=null,bestDist=Infinity;
+    for(var ci=0;ci<components.length;ci++){
+      var hs=compHandles(cv,def,components[ci],ci);
+      for(var hi=0;hi<hs.length;hi++){
+        var hh=hs[hi],dx=hh.px-px,dy=hh.py-py,dd=Math.sqrt(dx*dx+dy*dy);
+        if(dd<bestDist){bestDist=dd;best=hh;}
+      }
+    }
+    if(best&&bestDist<20){
+      dragState.active=true;dragState.compIdx=best.ci;
+      dragState.handle=best.h;dragState.def=def;
+    }
+  }
+  function onMove(ex,ey){
+    if(!dragState.active||dragState.def!==def)return;
+    var r=cv.getBoundingClientRect();
+    applyDrag(cv,def,ex-r.left,ey-r.top);
+  }
+  cv.addEventListener('mousedown',function(e){onDown(e.clientX,e.clientY);e.preventDefault();});
+  window.addEventListener('mousemove',function(e){if(dragState.active)onMove(e.clientX,e.clientY);});
+  window.addEventListener('mouseup',function(){dragState.active=false;});
+  cv.addEventListener('touchstart',function(e){onDown(e.touches[0].clientX,e.touches[0].clientY);e.preventDefault();},{passive:false});
+  cv.addEventListener('touchmove',function(e){if(dragState.active)onMove(e.touches[0].clientX,e.touches[0].clientY);e.preventDefault();},{passive:false});
+  cv.addEventListener('touchend',function(){dragState.active=false;});
+});
+
+// ── Histograms ─────────────────────────────────────────────────────
+function h1d(arr,lo,hi,nb){
+  var H=new Float32Array(nb),dx=(hi-lo)/nb;
+  for(var i=0;i<arr.length;i++){var b=Math.floor((arr[i]-lo)/dx);if(b>=0&&b<nb)H[b]++;}
+  return H;
+}
+function h2d(ax,ay,lox,hix,loy,hiy,nb){
+  var H=new Float32Array(nb*nb),dx=(hix-lox)/nb,dy=(hiy-loy)/nb;
+  for(var i=0;i<ax.length;i++){
+    var bx=Math.floor((ax[i]-lox)/dx),by=Math.floor((ay[i]-loy)/dy);
+    if(bx>=0&&bx<nb&&by>=0&&by<nb)H[by*nb+bx]++;
+  }
+  return H;
+}
+
+// ── Pair plot ──────────────────────────────────────────────────────
+function renderPairCanvas(pd){
+  if(!pd.axX)return;
+  var cv=document.getElementById(pd.id);
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr;
+  var ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,W,H);
+  var lH=Math.max(14,Math.round(W*0.075));
+  var pad=Math.round(lH*1.9),pw=W-2*pad,ph=H-2*pad,nb=52;
+  ctx.fillStyle='#131313';ctx.fillRect(pad,pad,pw,ph);
+  var H2=h2d(pd.axX,pd.axY,pd.lox,pd.hix,pd.loy,pd.hiy,nb);
+  var hm=0;for(var k=0;k<H2.length;k++)if(H2[k]>hm)hm=H2[k];
+  if(hm>0){
+    var bw=pw/nb,bh=ph/nb;
+    for(var iy=0;iy<nb;iy++){for(var ix=0;ix<nb;ix++){
+      var v=H2[iy*nb+ix]/hm;if(v<0.004)continue;
+      ctx.fillStyle=viridis(Math.pow(v,0.38));
+      ctx.fillRect(pad+ix*bw,pad+ph-(iy+1)*bh,bw+0.5,bh+0.5);
+    }}
+  }
+  ctx.strokeStyle='#2a2a2a';ctx.lineWidth=0.8;ctx.strokeRect(pad,pad,pw,ph);
+  var tH=Math.max(7,Math.round(W*0.034));
+  var dec=function(v){return Math.abs(v)>=10?0:Math.abs(v)>=1?1:2;};
+  ctx.fillStyle='#555';ctx.font=tH+'px monospace';
+  ctx.textAlign='left'; ctx.fillText(pd.lox.toFixed(dec(pd.lox)),pad,pad+ph+tH+3);
+  ctx.textAlign='right';ctx.fillText(pd.hix.toFixed(dec(pd.hix)),pad+pw,pad+ph+tH+3);
+  ctx.textAlign='right';ctx.fillText(pd.hiy.toFixed(dec(pd.hiy)),pad-3,pad+tH);
+  ctx.textAlign='right';ctx.fillText(pd.loy.toFixed(dec(pd.loy)),pad-3,pad+ph);
+  drawMath(ctx,pd.xl,W/2,pad+ph+lH*1.25,lH,0,'#aaa');
+  drawMath(ctx,pd.yl,lH*0.65,H/2,lH,-Math.PI/2,'#aaa');
+}
+
+// ── Full 6×6 corner ────────────────────────────────────────────────
+function renderCorner(){
+  if(!S)return;
+  var cv=document.getElementById('cornercv');
+  var dpr=window.devicePixelRatio||1,W=cv.width/dpr,H=cv.height/dpr;
+  var ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,W,H);
+  var NDIM=6;
+  var axN=['m_1','m_2','\\chi_1','\\chi_2','z_1','z_2'];
+  var lo=[5,5,0,0,-1,-1],hi=[90,90,1,1,1,1];
+  var arrs=[S.m1,S.m2,S.c1,S.c2,S.z1,S.z2];
+  var lH=Math.max(9,Math.round(W*0.022));
+  var tH=Math.max(6,Math.round(W*0.012));
+  var ML=lH*2.4,MR=6,MT=6,MB=lH*2.4;
+  var cw=(W-ML-MR)/NDIM,ch=(H-MT-MB)/NDIM;
+  var pad=2,nb=44;
+  for(var row=0;row<NDIM;row++){
+    for(var col=0;col<=row;col++){
+      var x0=ML+col*cw+pad,y0=MT+row*ch+pad,cws=cw-2*pad,chs=ch-2*pad;
+      ctx.fillStyle='#181818';ctx.fillRect(x0,y0,cws,chs);
+      if(row===col){
+        var H1=h1d(arrs[row],lo[row],hi[row],nb);
+        var hm=0;for(var k=0;k<nb;k++)if(H1[k]>hm)hm=H1[k];
+        if(hm>0){var bw=cws/nb;for(var k=0;k<nb;k++){var t=H1[k]/hm;ctx.fillStyle=viridis(0.35+0.65*t);ctx.fillRect(x0+k*bw,y0+chs-t*chs,bw+0.5,t*chs);}}
+      }else{
+        var H2=h2d(arrs[col],arrs[row],lo[col],hi[col],lo[row],hi[row],nb);
+        var hm=0;for(var k=0;k<H2.length;k++)if(H2[k]>hm)hm=H2[k];
+        if(hm>0){var bw2=cws/nb,bh2=chs/nb;for(var iy=0;iy<nb;iy++){for(var ix=0;ix<nb;ix++){var v=H2[iy*nb+ix]/hm;if(v<0.004)continue;ctx.fillStyle=viridis(Math.pow(v,0.4));ctx.fillRect(x0+ix*bw2,y0+chs-(iy+1)*bh2,bw2+0.5,bh2+0.5);}}}
+      }
+      ctx.strokeStyle='#2a2a2a';ctx.lineWidth=0.5;ctx.strokeRect(x0,y0,cws,chs);
+      if(col===0&&row>0){ctx.fillStyle='#444';ctx.font=tH+'px monospace';ctx.textAlign='right';ctx.fillText(hi[row].toFixed(1),x0-2,y0+7);ctx.fillText(lo[row].toFixed(1),x0-2,y0+chs);}
+      if(row===NDIM-1){ctx.fillStyle='#444';ctx.font=tH+'px monospace';ctx.textAlign='left';ctx.fillText(lo[col].toFixed(1),x0,y0+chs+tH+2);ctx.textAlign='right';ctx.fillText(hi[col].toFixed(1),x0+cws,y0+chs+tH+2);}
+    }
+  }
+  for(var i=0;i<NDIM;i++){
+    drawMath(ctx,axN[i],ML-lH*1.1,MT+(i+0.5)*ch,lH*1.15,-Math.PI/2,'#888');
+    drawMath(ctx,axN[i],ML+(i+0.5)*cw,MT+NDIM*ch+lH*1.5,lH*1.15,0,'#888');
+  }
+}
+
+// ── View toggle ────────────────────────────────────────────────────
+var viewMode='pairs';
+function toggleView(){
+  viewMode=viewMode==='pairs'?'corner':'pairs';
+  var pairs=viewMode==='pairs';
+  document.querySelectorAll('canvas.pairplot').forEach(function(c){c.style.display=pairs?'block':'none';});
+  document.getElementById('corner-full').style.display=pairs?'none':'block';
+  var btn=document.getElementById('viewBtn');
+  btn.textContent=pairs?'full corner':'pairs view';
+  btn.classList.toggle('active',!pairs);
+  initSizes();doUpdate();
+}
+
+// ── UI builder ─────────────────────────────────────────────────────
+function sHTML(id,lbl,min,max,step,val,dec){
+  return'<div class="pr"><label>'+lbl+'</label>'+
+    '<input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+
+    parseFloat(val).toFixed(10)+'"><span class="val" id="v_'+id+'">'+
+    parseFloat(val).toFixed(dec)+'</span></div>';
+}
+
+function distSlidersHTML(k,which){
+  var c=components[k];
+  var dist=(which==='ma')?c.distMa:c.distMb;
+  var pfx='c'+k+'_'+which;
+  var lbl=(which==='ma')?'m<sub>A</sub>':'m<sub>B</sub>';
+  var html='<div class="dist-row"><span class="dist-lbl">'+lbl+'</span>';
+  html+='<button class="dist-toggle" onclick="toggleDist('+k+',\''+which+'\')">'+dist.type+'</button>';
+  if(dist.type==='Gaussian'){
+    html+=sHTML(pfx+'_mu','μ',5,90,0.5,dist.mu,1);
+    html+=sHTML(pfx+'_sig','σ',0.5,30,0.5,dist.sigma,1);
+  }else{
+    html+=sHTML(pfx+'_mmin','m<sub>min</sub>',5,88,1,dist.mmin,0);
+    html+=sHTML(pfx+'_mmax','m<sub>max</sub>',6,90,1,dist.mmax,0);
+    html+=sHTML(pfx+'_alpha','α',-6,0,0.05,dist.alpha,2);
+  }
+  html+='</div>';
+  return html;
+}
+
+function compBlockHTML(k){
+  var c=components[k],col=c.color;
+  var bothG=(c.distMa.type==='Gaussian'&&c.distMb.type==='Gaussian');
+  var html='<details class="comp-block" id="cb_'+k+'" open>';
+  html+='<summary>';
+  html+='<span class="comp-dot" style="background:'+col+'"></span>';
+  html+='<span class="comp-title">Comp '+(k+1)+'</span>';
+  if(components.length>1)html+='<button class="comp-remove" onclick="removeComponent('+k+')">✕</button>';
+  html+='</summary><div class="comp-body">';
+  // Mass
+  html+='<div class="csec"><div class="csec-title">Mass</div>';
+  html+=distSlidersHTML(k,'ma');
+  html+=distSlidersHTML(k,'mb');
+  if(bothG)html+=sHTML('c'+k+'_rhoM','ρ<sub>m</sub>',-0.95,0.95,0.05,c.rhoM,2);
+  html+='</div>';
+  // Spin
+  html+='<div class="csec"><div class="csec-title">Spin χ ∈ [0,1]</div><div class="sparams">';
+  html+=sHTML('c'+k+'_muCa','μ<sub>χA</sub>',0,1,0.01,c.muCa,2);
+  html+=sHTML('c'+k+'_sigCa','σ<sub>χA</sub>',0.01,0.45,0.01,c.sigCa,2);
+  html+=sHTML('c'+k+'_muCb','μ<sub>χB</sub>',0,1,0.01,c.muCb,2);
+  html+=sHTML('c'+k+'_sigCb','σ<sub>χB</sub>',0.01,0.45,0.01,c.sigCb,2);
+  html+=sHTML('c'+k+'_rhoChi','ρ<sub>χ</sub>',-0.95,0.95,0.05,c.rhoChi,2);
+  html+='</div></div>';
+  // Tilt
+  html+='<div class="csec"><div class="csec-title">Cos tilt ∈ [-1,1]</div><div class="sparams">';
+  html+=sHTML('c'+k+'_muZa','μ<sub>zA</sub>',-1,1,0.02,c.muZa,2);
+  html+=sHTML('c'+k+'_sigZa','σ<sub>zA</sub>',0.01,0.5,0.01,c.sigZa,2);
+  html+=sHTML('c'+k+'_muZb','μ<sub>zB</sub>',-1,1,0.02,c.muZb,2);
+  html+=sHTML('c'+k+'_sigZb','σ<sub>zB</sub>',0.01,0.5,0.01,c.sigZb,2);
+  html+=sHTML('c'+k+'_rhoZ','ρ<sub>z</sub>',-0.95,0.95,0.05,c.rhoZ,2);
+  html+='</div></div>';
+  html+='</div></details>';
+  return html;
+}
+
+function weightsRowHTML(){
+  var W=normWeights(),html='';
+  for(var k=0;k<components.length;k++){
+    var c=components[k];
+    html+='<div class="wt-item">';
+    html+='<span class="wt-dot" style="background:'+c.color+'"></span>';
+    html+='<label>'+(k+1)+'</label>';
+    html+='<input type="range" id="c'+k+'_wt" min="0" max="1" step="0.01" value="'+
+      c.weight.toFixed(4)+'">';
+    html+='<span class="wval" id="v_c'+k+'_wt">'+(W[k]*100).toFixed(0)+'%</span>';
+    html+='</div>';
+  }
+  return html;
+}
+
+function rebuildPanel(){
+  document.getElementById('weightsRow').innerHTML=weightsRowHTML();
+  var bhtml='';
+  for(var k=0;k<components.length;k++)bhtml+=compBlockHTML(k);
+  document.getElementById('compBlocks').innerHTML=bhtml;
+  for(var k=0;k<components.length;k++)wireComp(k);
+  wireWeights();
+}
+
+function wireComp(k){
+  var c=components[k];
+  function w(id,setter,dec){
+    var el=document.getElementById(id);if(!el)return;
+    el.addEventListener('input',function(){
+      var v=parseFloat(this.value);setter(v);
+      var ve=document.getElementById('v_'+id);if(ve)ve.textContent=v.toFixed(dec);
+      scheduleUpdate();
+    });
+  }
+  // mA
+  if(c.distMa.type==='Gaussian'){
+    w('c'+k+'_ma_mu',function(v){c.distMa.mu=v;},1);
+    w('c'+k+'_ma_sig',function(v){c.distMa.sigma=v;},1);
+  }else{
+    w('c'+k+'_ma_mmin',function(v){c.distMa.mmin=Math.min(v,c.distMa.mmax-2);},0);
+    w('c'+k+'_ma_mmax',function(v){c.distMa.mmax=Math.max(v,c.distMa.mmin+2);},0);
+    w('c'+k+'_ma_alpha',function(v){c.distMa.alpha=v;},2);
+  }
+  // mB
+  if(c.distMb.type==='Gaussian'){
+    w('c'+k+'_mb_mu',function(v){c.distMb.mu=v;},1);
+    w('c'+k+'_mb_sig',function(v){c.distMb.sigma=v;},1);
+  }else{
+    w('c'+k+'_mb_mmin',function(v){c.distMb.mmin=Math.min(v,c.distMb.mmax-2);},0);
+    w('c'+k+'_mb_mmax',function(v){c.distMb.mmax=Math.max(v,c.distMb.mmin+2);},0);
+    w('c'+k+'_mb_alpha',function(v){c.distMb.alpha=v;},2);
+  }
+  // rhoM (only when both Gaussian)
+  if(c.distMa.type==='Gaussian'&&c.distMb.type==='Gaussian'){
+    w('c'+k+'_rhoM',function(v){c.rhoM=v;},2);
+  }
+  // Spin
+  w('c'+k+'_muCa', function(v){c.muCa=v;},2);
+  w('c'+k+'_sigCa',function(v){c.sigCa=v;},2);
+  w('c'+k+'_muCb', function(v){c.muCb=v;},2);
+  w('c'+k+'_sigCb',function(v){c.sigCb=v;},2);
+  w('c'+k+'_rhoChi',function(v){c.rhoChi=v;},2);
+  // Tilt
+  w('c'+k+'_muZa', function(v){c.muZa=v;},2);
+  w('c'+k+'_sigZa',function(v){c.sigZa=v;},2);
+  w('c'+k+'_muZb', function(v){c.muZb=v;},2);
+  w('c'+k+'_sigZb',function(v){c.sigZb=v;},2);
+  w('c'+k+'_rhoZ', function(v){c.rhoZ=v;},2);
+}
+
+function wireWeights(){
+  for(var k=0;k<components.length;k++){
+    (function(k){
+      var el=document.getElementById('c'+k+'_wt');if(!el)return;
+      el.addEventListener('input',function(){
+        components[k].weight=parseFloat(this.value);
+        var W=normWeights();
+        for(var j=0;j<components.length;j++){
+          var ve=document.getElementById('v_c'+j+'_wt');
+          if(ve)ve.textContent=(W[j]*100).toFixed(0)+'%';
+        }
+        scheduleUpdate();
+      });
+    })(k);
+  }
+}
+
+// ── Component add/remove/toggle ────────────────────────────────────
+function addComponent(type){
+  closeAddMenu();
+  var col=COMP_COLORS[components.length%COMP_COLORS.length];
+  if(type==='gaussian')   components.push(mkGaussianComp(col));
+  else if(type==='pl_ma') components.push(mkPLmaComp(col));
+  else                    components.push(mkPLmbComp(col));
+  rebuildPanel();scheduleUpdate();
+}
+function removeComponent(k){
+  if(components.length<=1)return;
+  components.splice(k,1);
+  rebuildPanel();scheduleUpdate();
+}
+function toggleDist(k,which){
+  var c=components[k];
+  var cur=(which==='ma')?c.distMa.type:c.distMb.type;
+  if(which==='ma'){
+    c.distMa=(cur==='Gaussian')
+      ?{type:'PowerLaw',mmin:5,mmax:50,alpha:-2.35}
+      :{type:'Gaussian',mu:35,sigma:13};
+  }else{
+    c.distMb=(cur==='Gaussian')
+      ?{type:'PowerLaw',mmin:5,mmax:50,alpha:-2.35}
+      :{type:'Gaussian',mu:20,sigma:26};
+  }
+  rebuildPanel();scheduleUpdate();
+}
+function toggleAddMenu(){
+  document.getElementById('addMenu').classList.toggle('open');
+}
+function closeAddMenu(){
+  document.getElementById('addMenu').classList.remove('open');
+}
+document.addEventListener('click',function(e){
+  if(!document.getElementById('addWrap').contains(e.target))closeAddMenu();
+});
+
+// ── Nk slider ──────────────────────────────────────────────────────
+(function(){
+  var el=document.getElementById('Nk');
+  el.addEventListener('input',function(){
+    document.getElementById('v_Nk').textContent=el.value;
+    scheduleUpdate();
+  });
+})();
+
+// ── Update loop ────────────────────────────────────────────────────
+var _raf=null;
+function scheduleUpdate(){if(_raf)return;_raf=requestAnimationFrame(function(){_raf=null;doUpdate();});}
+function doUpdate(){
+  generateSamples();
+  blobDefs.forEach(drawBlobCanvas);
+  if(viewMode==='pairs')pairDefs.forEach(renderPairCanvas);
+  else renderCorner();
+  var W=normWeights();
+  var wStr=W.map(function(w,i){return'w'+(i+1)+'='+(w*100).toFixed(0)+'%';}).join(' ');
+  document.getElementById('info').innerHTML=
+    'N='+S.N.toLocaleString()+'&nbsp;&nbsp;swap: '+(S.fswap/S.N*100).toFixed(1)+'%&nbsp;&nbsp;'+wStr;
+}
+
+// ── Sizing ─────────────────────────────────────────────────────────
+var initDone=false;
+function initSizes(){
+  var dpr=window.devicePixelRatio||1;
+  var maxH=Math.floor((window.innerHeight-200)/2);
+  blobDefs.forEach(function(def,i){
+    var cv=document.getElementById(def.id);
+    var w=Math.min(Math.max(cv.offsetWidth||180,80),maxH);
+    cv.width=Math.round(w*dpr);cv.height=Math.round(w*dpr);
+    cv.style.width=w+'px';cv.style.height=w+'px';
+    var pcv=document.getElementById(pairDefs[i].id);
+    pcv.width=Math.round(w*dpr);pcv.height=Math.round(w*dpr);
+    pcv.style.width=w+'px';pcv.style.height=w+'px';
+  });
+  var ccv=document.getElementById('cornercv');
+  var cw=document.getElementById('corner-full').offsetWidth||600;
+  var csz=Math.max(280,Math.min(cw,700));
+  ccv.width=Math.round(csz*dpr);ccv.height=Math.round(csz*dpr);
+  ccv.style.width=csz+'px';ccv.style.height=csz+'px';
+}
+var _rsz=null;
+window.addEventListener('resize',function(){
+  clearTimeout(_rsz);_rsz=setTimeout(function(){initSizes();doUpdate();},120);
+});
+
+// ── Init ───────────────────────────────────────────────────────────
+initSizes();
+rebuildPanel();
+initDone=true;
+doUpdate();
+</script>
+</body></html>
